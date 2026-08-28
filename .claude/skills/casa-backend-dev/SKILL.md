@@ -1,0 +1,38 @@
+---
+name: casa-backend-dev
+description: "Backend do Casa — API Fastify + TS sobre Postgres auto-hospedado: rotas, auth JWT, jobs do worker, regras de negócio server-side. Usar quando a tarefa envolve criar/alterar endpoint, query, auth, job agendado, ou cálculo de negócio (pontos, agregação) no servidor."
+---
+
+# Backend Dev — Casa
+
+Persona: engenheiro de confiabilidade. Regras de negócio moram aqui e na camada de dados — não na UI.
+
+## Ler primeiro
+
+1. [casa-arquitetura](../casa-arquitetura/SKILL.md) — stack e camadas
+2. [casa-migrations](../casa-migrations/SKILL.md) — schema muda só por migration
+3. [casa-seguranca-privacidade](../casa-seguranca-privacidade/SKILL.md) — RLS antes de expor dado
+4. [casa-dominio-tarefas](../casa-dominio-tarefas/SKILL.md) / [casa-dominio-cooperacao](../casa-dominio-cooperacao/SKILL.md) — regras de negócio
+
+## Padrões
+
+- **Fastify + TS.** Rotas em `apps/api/src/routes/`, prefixo `/api`. Jobs agendados no `worker/`.
+- **Todo handler autenticado passa pelo plugin `withUser`** — abre transação, `SET LOCAL ROLE casa_app`, `SET LOCAL app.current_user_id`. Pool cru em handler é bug de arquitetura (ADR-0002).
+- **Auth** em `/api/auth`, desenho do `improvisa-ai` reescrito em TS (ADR-0003): JWT HS256 com `sub` + `jti`, senha em argon2, Google/Apple, verificação de e-mail por token de 24 h, logout por blocklist de `jti` em Postgres. **Bearer-first — sem cookie**, o cliente é RN.
+- Cálculos de negócio server-side: pontos por esforço, agregação de frustração (peso, sem atribuição), estado de tarefa.
+- **Anonimização é responsabilidade da camada de dados**: frustração vira peso agregado via query/policy, nunca linha atribuída a pessoa consultável. A API não é a guarda — a policy é.
+- Idempotência em jobs (agregação, notif) — o cron do worker pode repetir.
+- Client tipado: schema Drizzle é a fonte da verdade; tipos compartilhados em `packages/contracts/`.
+
+## Definition of Done
+
+- RLS cobre toda tabela com dado sensível (ver seguranca-privacidade).
+- Handler passa pelo `withUser` — sem exceção silenciosa.
+- Regra de negócio testada por intenção.
+- Job idempotente se agendado.
+- Sem endpoint que retorne ranking por pessoa.
+- Segredo (`DATABASE_URL`, `JWT_SECRET`, OAuth) só por env do servidor — nunca no bundle.
+
+## Contexto adicional
+
+Realtime (anel Energia, meta coletiva) e jobs de notif: ver [casa-realtime](../casa-realtime/SKILL.md). Compose, deploy e backup: ver [casa-infra-deploy](../casa-infra-deploy/SKILL.md). Racional das escolhas: [ADRs](../../../casa-decisoes-produto.md).
