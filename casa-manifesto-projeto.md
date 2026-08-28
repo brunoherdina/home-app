@@ -107,8 +107,8 @@ Substantivos centrais e as máquinas/regras que os governam:
 
 - **Divisão de tarefas** — `tarefa`, `ponto` (peso por esforço), `modo` (**Rodízio** / **Fixo** /
   **Aberta**), `rotação`, `bônus`. Máquina de estados + cálculo de pontos.
-  Regra pendente de confirmação: tarefa detestada por todos entra em **rodízio + bônus** (modelo a
-  confirmar — ver §8).
+  ✅ *Confirmado (ADR-0010)*: tarefa detestada por todos entra em **rodízio + pontos-bônus**, com a
+  guarda de que o bônus alimenta "sua parte" e a meta coletiva, **nunca** comparação entre moradores.
 - **Cooperação & anonimização** — `energia da casa`, `nível`, `ofensiva`/`streak`, `meta coletiva`,
   `recompensa compartilhada`, `contribuição não-competitiva`, `sua parte`, `frustração agregada`,
   `pulso anônimo`, `aspiração privada`. Invariantes: **sem ranking**, **sem atribuição de frustração**,
@@ -153,7 +153,8 @@ O criador absorve o setup pesado diluído; o convidado entra ultra-leve. (Ver §
 
 | Épico | Nome | Entrega-núcleo |
 |---|---|---|
-| **0** | Bootstrap do harness + fundação | rodar harness-architect; repo; skeleton Expo + API Fastify; compose Postgres; 1ª migration; tokens |
+| **0a** | Bootstrap: fundação local | harness ✅; repo ✅; skeleton Expo + API Fastify; compose local; roles + `withUser`; 1ª migration; contracts/zod; `expo-updates` instalado; tokens |
+| **0b** | Bootstrap: produção | provedor de VPS; Caddy/TLS; migration como job de deploy; backup offsite **com restore testado**; CI — fecha antes do convite (Épico 2) |
 | **1** | Identidade & Casa | auth, modelo de dados, RLS, onboarding **Fase 0** |
 | **2** | Tarefas & Divisão | aba Tarefas, pontos/modos, convite, onboarding **Fase 1** |
 | **3** | Cooperativo | Início (anel) + aba Casa, nível, ofensiva, meta coletiva |
@@ -178,10 +179,11 @@ tem um épico que a exercita**.
 | Regras de anonimização | ✅ definidas (implementação pendente) |
 | Idioma do time | ✅ pt-BR |
 | Domínio / prefixo (`casa-`) | ✅ claros |
-| Stack técnico | 🟡 recomendado, **a confirmar** |
-| Modelo de rodízio+bônus (tarefa detestada) | 🟡 a confirmar |
-| Escopo do pulso semanal | 🟡 a confirmar |
-| Repo / CI / host | ⬜ `<PREENCHER>` |
+| Stack técnico | ✅ confirmado (ADR-0001 a ADR-0006) |
+| Modelo de rodízio+bônus (tarefa detestada) | ✅ confirmado (ADR-0010) |
+| Escopo do pulso semanal | ✅ confirmado — só humor (ADR-0011) |
+| Repo | ✅ `git@github.com:brunoherdina/home-app.git` |
+| CI / host de produção | ⬜ decisão nº 5 — trava o Épico 0b, não o 0a |
 | Modelo de negócio | ⬜ `<PREENCHER>` |
 | Docs LGPD (termos/política) | ⬜ `<PREENCHER>` |
 
@@ -204,12 +206,18 @@ tem um épico que a exercita**.
 
 ## 9. Decisões de produto em aberto (de `casa-decisoes-produto.md`)
 
-1. Escopo do pulso semanal: só humor **vs.** também "alguém está sobrecarregado?".
-2. Confirmação final do modelo **rodízio + bônus** para tarefas detestadas por todos.
-3. Modelo de negócio sustentável.
-4. Qual tela prototipar primeiro (criador na Fase 0 **vs.** passo de preferências).
+Rodada de decisões de 2026-08-28 fechou sete. Restam:
 
-Nenhuma bloqueia o bootstrap do harness. Todas devem ir pro `harness-report.md`.
+1. **Modelo de negócio** sustentável → Épico 6.
+2. **Termos de uso + política de privacidade** (LGPD), exclusão e exportação → Épico 6.
+3. **Provedor da VPS + backup offsite** → trava o Épico 0b, não o 0a.
+4. **E2E**: Maestro × Detox, a decidir junto com o `rimaai` → Épico 6.
+
+Fechadas: pulso só humor (ADR-0011) · rodízio + bônus (ADR-0010) · OTA instalado no bootstrap
+(ADR-0007) · refresh token antecipado pro Épico 1 (ADR-0008) · React Hook Form + zod (ADR-0009) ·
+primeira tela a prototipar = **criador da Fase 0**.
+
+Nenhuma das restantes bloqueia o Épico 0a.
 
 ---
 

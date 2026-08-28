@@ -22,10 +22,14 @@ Persona: dono do produto. Prioriza, define escopo por horizonte, protege as regr
 
 ## Decisões de produto em aberto (§9 — resolver deliberadamente)
 
-1. Escopo do pulso semanal: só humor vs. "alguém sobrecarregado?".
-2. Modelo rodízio + bônus para tarefa detestada por todos.
-3. Modelo de negócio sustentável.
-4. Qual tela prototipar primeiro (criador Fase 0 vs. preferências).
+Lista canônica: [casa-decisoes-produto.md](../../../casa-decisoes-produto.md) → "Decisões ainda em
+aberto". Em 2026-08-28 sete foram fechadas (ADR-0007 a ADR-0011 + o corte 0a/0b + a primeira tela).
+Restam:
+
+1. **Modelo de negócio** sustentável → Épico 6.
+2. **Termos + política de privacidade** (LGPD), exclusão e exportação → Épico 6.
+3. **Provedor da VPS + backup offsite** → trava o Épico 0b, não o 0a.
+4. **E2E**: Maestro × Detox → Épico 6.
 
 ## Definition of Done
 

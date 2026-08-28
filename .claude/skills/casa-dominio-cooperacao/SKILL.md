@@ -31,9 +31,22 @@ Fronteira com segurança: esta skill **define** a regra; [casa-seguranca-privaci
 - Concluir tarefa → sobe energia/nível **da casa**; nunca cria posição comparativa entre moradores.
 - Registrar incômodo → afeta distribuição como peso; nenhuma consulta liga incômodo↔autor para terceiros.
 - Pulso semanal de 4 moradores → termômetro agregado; impossível derivar o humor de um indivíduo.
+- Pulso numa casa de 2 → abaixo do piso de respostas: a pergunta não é feita (ADR-0011).
 - Aspiração "quero ler mais" (pra mim) → invisível ao grupo. "Quero a sala organizada" (pra casa) → vira objetivo.
 - Qualquer feature de gamificação → passa no teste: "isso cria competição individual?" Se sim, rejeitar.
 
 ## Contexto adicional
 
-Escopo do pulso (só humor vs. sobrecarga) em aberto (§9) — confirmar antes de modelar.
+Escopo do pulso fechado no **ADR-0011**: **só humor**, nunca "alguém está sobrecarregado?".
+
+> [!danger] Anonimato numa casa de 2 não existe
+> Casal é o público principal. Com dois moradores, qualquer resposta "anônima" é reidentificável no
+> ato — se o termômetro mudou e não foi você, foi a outra pessoa. Daí a **regra do piso**: agregado
+> só é exibido acima de um mínimo de respostas; casa que não atinge o piso **não recebe a pergunta**.
+> Vale pro pulso e pros incômodos.
+
+Sobrecarga não some do produto — ela é **inferida** do peso de tarefas concluídas contra a
+distribuição esperada, sem criar dado sensível novo (Épico 4).
+
+Pontos-bônus do **ADR-0010** entram aqui como teste: alimentam "sua parte" e a meta coletiva, nunca
+comparação entre moradores.

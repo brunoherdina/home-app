@@ -19,6 +19,8 @@ Persona: engenheiro de confiabilidade. Regras de negócio moram aqui e na camada
 - **Fastify + TS.** Rotas em `apps/api/src/routes/`, prefixo `/api`. Jobs agendados no `worker/`.
 - **Todo handler autenticado passa pelo plugin `withUser`** — abre transação, `SET LOCAL ROLE casa_app`, `SET LOCAL app.current_user_id`. Pool cru em handler é bug de arquitetura (ADR-0002).
 - **Auth** em `/api/auth`, desenho do `improvisa-ai` reescrito em TS (ADR-0003): JWT HS256 com `sub` + `jti`, senha em argon2, Google/Apple, verificação de e-mail por token de 24 h, logout por blocklist de `jti` em Postgres. **Bearer-first — sem cookie**, o cliente é RN.
+- **Par access + refresh desde o Épico 1** (ADR-0008): access ~15 min, refresh de 30–90 dias com **rotação a cada uso**. Refresh já consumido chegando de novo = vazamento → revogar a família inteira de tokens e forçar login. Logout de verdade é revogar o refresh, não descartar o access no cliente.
+- **Validação de payload com os schemas zod de `packages/contracts`** (ADR-0009) — os mesmos do formulário no app. zod valida **forma**, nunca autoridade: payload válido continua sujeito à RLS.
 - Cálculos de negócio server-side: pontos por esforço, agregação de frustração (peso, sem atribuição), estado de tarefa.
 - **Anonimização é responsabilidade da camada de dados**: frustração vira peso agregado via query/policy, nunca linha atribuída a pessoa consultável. A API não é a guarda — a policy é.
 - Idempotência em jobs (agregação, notif) — o cron do worker pode repetir.
@@ -30,7 +32,7 @@ Persona: engenheiro de confiabilidade. Regras de negócio moram aqui e na camada
 - Handler passa pelo `withUser` — sem exceção silenciosa.
 - Regra de negócio testada por intenção.
 - Job idempotente se agendado.
-- Sem endpoint que retorne ranking por pessoa.
+- Sem endpoint que retorne ranking por pessoa — inclui os **pontos-bônus** do ADR-0010, que alimentam "sua parte" e o coletivo e nunca uma lista ordenada de moradores.
 - Segredo (`DATABASE_URL`, `JWT_SECRET`, OAuth) só por env do servidor — nunca no bundle.
 
 ## Contexto adicional

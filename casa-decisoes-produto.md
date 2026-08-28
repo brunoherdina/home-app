@@ -29,6 +29,11 @@ Skills `casa-*` referenciam este arquivo; se um ADR mudar, as skills afetadas mu
 | [0004](#adr-0004--realtime-por-listennotify--websocket) | Realtime por LISTEN/NOTIFY + WebSocket | ✅ Aceito |
 | [0005](#adr-0005--drizzle--drizzle-kit-para-schema-e-client-tipado) | Drizzle + drizzle-kit para schema e client tipado | ✅ Aceito |
 | [0006](#adr-0006--estado-e-data-fetching-no-app) | Estado e data fetching no app | ✅ Aceito |
+| [0007](#adr-0007--ota-instalado-no-bootstrap) | OTA instalado no bootstrap, publicação adiada | ✅ Aceito |
+| [0008](#adr-0008--refresh-token-no-épico-1) | Refresh token antecipado para o Épico 1 | ✅ Aceito |
+| [0009](#adr-0009--formulários-com-react-hook-form-e-zod) | Formulários com React Hook Form + zod | ✅ Aceito |
+| [0010](#adr-0010--rodízio-com-bônus-de-pontos-para-tarefa-detestada) | Rodízio + bônus de pontos para tarefa detestada | ✅ Aceito |
+| [0011](#adr-0011--pulso-semanal-só-de-humor) | Pulso semanal só de humor | ✅ Aceito |
 
 ---
 
@@ -272,6 +277,158 @@ comum para telas dessincronizadas.
 
 ---
 
+## ADR-0007 — OTA instalado no bootstrap
+
+**Data:** 2026-08-28 · **Status:** ✅ Aceito
+
+### Contexto
+
+Pergunta técnica nº 2 do handoff §11, marcada *"barato agora, caro depois"*. `expo-updates` é módulo
+nativo: adicioná-lo depois exige rebuild nativo e nova submissão às lojas — justamente quando você já
+tem gente instalada e um bug pra corrigir.
+
+### Decisão
+
+Instalar `expo-updates` e configurar os canais no **Épico 0a**. **Não publicar nenhum update OTA** até
+o Épico 6. A dependência existe pra estar lá quando for precisa, não pra ser usada agora.
+
+### Consequências
+
+- O primeiro dev build já nasce com runtime de update. Custo hoje ≈ zero.
+- **OTA só entrega JavaScript.** Trocar módulo nativo, versão de SDK ou permissão continua exigindo
+  build e submissão. Confundir os dois é como se descobre tarde que o rollback não existia.
+- OTA não é atalho pra fugir de review: mudança de comportamento do app tem que passar pela loja. A
+  política existe e o descumprimento custa a conta de publicação.
+
+---
+
+## ADR-0008 — Refresh token no Épico 1
+
+**Data:** 2026-08-28 · **Status:** ✅ Aceito · **Emenda o** [ADR-0003](#adr-0003--auth-jwt-próprio-herdado-do-improvisa-ai) **(delta 3)**
+
+### Contexto
+
+O ADR-0003 herdou do `improvisa-ai` o token único de 7 dias sem refresh e deixou a revisão pro Épico 6.
+Duas razões derrubam esse adiamento:
+
+1. **Custo de retrofit.** Enquanto o auth é código novo, refresh é barato. Depois, mexe em storage do
+   token, em todo cliente e na blocklist de `jti` — trabalho que só existe porque foi adiado.
+2. **O sinal do beta.** O v1 é dogfooding com duas pessoas. Token de 7 dias significa **logout
+   semanal**, que se apresenta como abandono e contamina a única medição que o beta produz.
+
+### Decisão
+
+O auth do Épico 1 nasce com par de tokens:
+
+| Token | Vida | Onde vive |
+|---|---|---|
+| Access | ~15 min | memória do app, enviado como `Authorization: Bearer` |
+| Refresh | longa (30–90 d) | `expo-secure-store`, usado só contra `/api/auth/refresh` |
+
+- **Rotação a cada uso**: o refresh consumido é invalidado e um novo é emitido.
+- **Detecção de reuso**: refresh já consumido chegando de novo = sinal de vazamento → revogar a
+  família inteira de tokens daquela sessão e forçar login.
+- A blocklist de `jti` do ADR-0003 (delta 2) passa a valer para refresh, não só para access.
+
+### Consequências
+
+- O Épico 1 cresce: rotação, reuso e revogação viram casos de teste, não detalhe de implementação.
+- **A janela de um token vazado cai de 7 dias para ~15 minutos.** É o ganho principal, e ele é de
+  segurança, não de conveniência.
+- Logout de verdade passa a ser *revogar o refresh*, não descartar o access no cliente.
+
+---
+
+## ADR-0009 — Formulários com React Hook Form e zod
+
+**Data:** 2026-08-28 · **Status:** ✅ Aceito
+
+### Contexto
+
+Pergunta técnica nº 3 do handoff §11. O Casa tem poucos formulários (login, criar casa, nova tarefa,
+preferências), mas todos têm contraparte na API.
+
+### Decisão
+
+**React Hook Form** com resolver **zod**. Os schemas zod moram em **`packages/contracts`** e são
+consumidos dos dois lados: validam o formulário no app e o payload no handler da API.
+
+### Consequências
+
+- Uma definição de regra, dois consumidores — a validação do app não diverge da validação da API,
+  que é o defeito clássico de validar na mão em cada tela.
+- `packages/contracts` precisa existir desde o Épico 1 (já está no layout do handoff §6).
+- Uncontrolled por padrão: menos re-render por tecla em React Native.
+
+> [!warning] Validação não é autorização
+> zod valida **forma**, nunca **autoridade**. Um payload perfeitamente válido continua sujeito à RLS
+> do [ADR-0002](#adr-0002--rls-continua-sendo-a-camada-de-enforcement). Schema aprovado não é permissão concedida.
+
+---
+
+## ADR-0010 — Rodízio com bônus de pontos para tarefa detestada
+
+**Data:** 2026-08-28 · **Status:** ✅ Aceito
+
+### Contexto
+
+O manifesto §4 marcava *"modelo a confirmar"*: como compensar a tarefa que **todos** os moradores
+detestam. Sem compensação, quem está da vez sente injustiça — o atrito exato que o produto existe pra
+remover.
+
+### Decisão
+
+Modo **Rodízio** + **pontos-bônus** para quem está da vez numa tarefa marcada como universalmente
+detestada (todos os moradores a marcaram como "detesto").
+
+> [!danger] A guarda que torna isso legítimo
+> Os pontos-bônus alimentam **"sua parte"** e a meta coletiva. Eles **nunca** aparecem em comparação
+> entre moradores — nem tela, nem endpoint, nem query que ordene pessoas por pontos. Sem essa guarda,
+> o bônus é um ranking entrando pela porta dos fundos, e viola o §2.1.
+
+### Consequências
+
+- **Sequência**: o Épico 2 implementa rodízio + bônus com a marcação **manual** na tarefa. O Épico 4
+  liga a detecção automática, derivada das preferências ("detesto") capturadas lá.
+- O bônus é atributo da **tarefa**, não da pessoa — o que preserva a ausência de atribuição.
+- Cabe ao `casa-dominio-tarefas` calcular, e ao `casa-dominio-cooperacao` provar que nada disso vira
+  pódio.
+
+---
+
+## ADR-0011 — Pulso semanal só de humor
+
+**Data:** 2026-08-28 · **Status:** ✅ Aceito
+
+### Contexto
+
+Pergunta nº 1 do manifesto §9: o pulso semanal captura só humor, ou também *"alguém está
+sobrecarregado?"*. Sobrecarga é literalmente a promessa do §1, o que torna a segunda opção tentadora.
+
+### Decisão
+
+**Só humor.** Uma pergunta, anônima, agregada em termômetro da casa.
+
+A razão é de privacidade, não de escopo:
+
+> [!danger] Anonimato numa casa de duas pessoas não existe
+> Casal é o público principal e o seu caso de dogfooding. Numa casa de 2, qualquer resposta "anônima"
+> é reidentificável no ato — se o termômetro mudou e não foi você, foi a outra pessoa. Prometer
+> anonimato que o sistema não pode cumprir é **pior** do que não perguntar: quebra a confiança que o
+> §2 existe pra construir.
+
+### Consequências
+
+- **Sobrecarga não fica invisível.** Ela sai do dado que já existe — peso das tarefas concluídas
+  contra a distribuição esperada — sem criar coluna sensível nova. Evolução do Épico 4.
+- **Regra derivada, válida para toda pergunta anônima futura**: agregado só é exibido acima de um
+  piso mínimo de respostas. Numa casa que não atinge o piso, a pergunta simplesmente não é feita.
+  Isso vale pro pulso e pros incômodos.
+- O schema do Épico 1 nasce sem coluna de sobrecarga por pessoa.
+
+
+---
+
 ## Decisões ainda em aberto
 
 ### Técnicas
@@ -279,17 +436,20 @@ comum para telas dessincronizadas.
 | # | Pergunta | Bloqueia |
 |---|---|---|
 | 1 | E2E de app: Maestro × Detox (decidir junto com o `rimaai`) | Épico 6 |
-| 2 | OTA (`expo-updates`) no v1 ou adiado | Épico 0 — barato agora, caro depois |
-| 3 | Formulários: React Hook Form ou controlado na mão | Épico 1 |
-| 4 | Refresh token (delta 3 do [ADR-0003](#adr-0003--auth-jwt-próprio-herdado-do-improvisa-ai)) | Épico 6 |
-| 5 | Provedor da VPS e estratégia de backup offsite | Épico 0 |
+| 5 | Provedor da VPS e estratégia de backup offsite | **Épico 0b** — deixou de bloquear o 0a |
+
+Fechadas em 2026-08-28: nº 2 → [ADR-0007](#adr-0007--ota-instalado-no-bootstrap) ·
+nº 3 → [ADR-0009](#adr-0009--formulários-com-react-hook-form-e-zod) ·
+nº 4 → [ADR-0008](#adr-0008--refresh-token-no-épico-1).
 
 ### Produto (do manifesto §9)
 
 | # | Pergunta | Bloqueia |
 |---|---|---|
-| 6 | Escopo do pulso semanal: só humor, ou também "alguém sobrecarregado?" | Épico 4 |
-| 7 | Modelo de rodízio + pontos-bônus para tarefa universalmente detestada | Épico 2 |
 | 8 | Modelo de negócio sustentável | Épico 6 |
-| 9 | Qual tela prototipar primeiro (criador Fase 0 × seleção de preferências) | — |
 | 10 | Termos de uso + política de privacidade (LGPD), exclusão e exportação de dados | Épico 6 |
+
+Fechadas em 2026-08-28: nº 6 → [ADR-0011](#adr-0011--pulso-semanal-só-de-humor) ·
+nº 7 → [ADR-0010](#adr-0010--rodízio-com-bônus-de-pontos-para-tarefa-detestada) ·
+nº 9 → **criador da Fase 0** é a primeira tela a prototipar (é o portão de retenção do §2.3 e o que o
+Épico 1 entrega; registrado no roadmap, não vira ADR).

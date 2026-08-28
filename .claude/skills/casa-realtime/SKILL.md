@@ -45,4 +45,5 @@ Ordem fixa (manifesto §5): Início → tarefa que curte/detesta → como dividi
 
 ## Contexto adicional
 
-Escopo do pulso semanal ainda em aberto (§9) — confirmar antes de agendar o nudge final.
+Pulso semanal fechado no **ADR-0011**: só humor, uma pergunta. O nudge final da Fase 2 agenda essa —
+e **não agenda nada** em casa que não atinge o piso mínimo de respostas.

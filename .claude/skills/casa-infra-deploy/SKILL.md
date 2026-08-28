@@ -14,6 +14,13 @@ responsabilidade nossa, e falham em silêncio quando ninguém é dono deles.
 2. [casa-arquitetura](../casa-arquitetura/SKILL.md) — camadas e DoD
 3. [Handoff §9](../../../casa-handoff-stack-expo.md) — armadilhas de EAS e de deploy
 
+## Dois momentos, um compose
+
+O Épico 0 foi cortado em **0a (local)** e **0b (produção)**. O mesmo `docker-compose.yml` serve os
+dois — muda o env e o serviço `caddy`, que só existe em produção. No 0a valem os roles, o volume e a
+ausência de porta publicada; TLS, backup offsite e CI são do 0b, que precisa fechar **antes do convite
+do Épico 2**, quando a segunda pessoa passa a precisar alcançar a API.
+
 ## Topologia
 
 Um `docker compose` na VPS, quatro serviços:

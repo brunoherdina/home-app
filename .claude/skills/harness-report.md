@@ -58,9 +58,9 @@ Templates co-localizados: `casa-prd-tasks/create-prd-template.md`, `casa-prd-tas
 
 **Sinalizáveis (registrar e resolver ao longo do roadmap):**
 - **Provedor da VPS** e destino do **backup offsite** — `pg_dump` local não sobrevive à perda da VPS.
-- **CI** a definir.
-- **Refresh token**: o padrão herdado do `improvisa-ai` é token de 7 dias sem refresh → logout semanal
-  num app instalado. Rever antes do beta (ADR-0003, delta 3).
+  Trava o **Épico 0b**, não o 0a (corte de 2026-08-28).
+- **CI** a definir → Épico 0b.
+- ~~**Refresh token**~~ → **ADR-0008**: antecipado pro Épico 1, com rotação e detecção de reuso.
 - **Sign in with Apple**: exigido pela App Store quando há outro social no iOS. Entra no Épico 1.
 - **LGPD**: anonimização é privacy-by-design ✅, mas **termos de uso + política de privacidade não existem** (`<PREENCHER>`). Direito de exclusão/exportação a modelar. → `casa-seguranca-privacidade`.
 - **Modelo de negócio** indefinido.
@@ -92,8 +92,11 @@ Proposta reproduz o conjunto esperado do manifesto: 7 núcleo + condicionais (mo
 ## Próximos passos
 
 1. ~~Confirmar/criar repo git~~ ✅.
-2. Bootstrap de harness completo: `CLAUDE.md` raiz + `docs/context/` (outra tarefa).
-3. Subir `infra/docker-compose.yml` + os dois roles do banco — é o que destrava o ADR-0002 na prática.
-4. Exportar `tokens.json` do Figma.
-5. Resolver as decisões em aberto via `casa-product-owner`.
-6. Épico 0 → Épico 1 (Identidade & Casa): auth própria + modelo de dados + RLS + onboarding Fase 0.
+2. ~~Resolver as decisões em aberto via `casa-product-owner`~~ → 7 fechadas em 2026-08-28
+   (ADR-0007 a ADR-0011, o corte 0a/0b, e a primeira tela a prototipar). Restam 4, todas fora do 0a.
+3. Bootstrap de harness completo: `CLAUDE.md` raiz + `docs/context/` (outra tarefa).
+4. **Épico 0a**: `infra/docker-compose.yml` local + os dois roles + `withUser` — é o que destrava o
+   ADR-0002 na prática, e as guardas de camada do `casa-qa` entram **antes do primeiro endpoint**.
+5. Exportar `tokens.json` do Figma; prototipar o **criador da Fase 0**.
+6. Épico 1 (Identidade & Casa): auth com refresh + modelo de dados + RLS + onboarding Fase 0.
+7. Épico 0b (VPS, TLS, backup com restore testado) **antes do convite do Épico 2**.
