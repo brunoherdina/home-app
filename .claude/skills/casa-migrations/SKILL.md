@@ -31,6 +31,15 @@ Persona: guardião do schema. Toda mudança de banco passa por migration revers�
   ```
 
   Depois que uma transação faz `SET LOCAL` e commita, o GUC volta como **string vazia**, não como `NULL`. Sem o `nullif`, `''::uuid` lança `22P02` na conexão reciclada do pool: a policy quebra em erro em vez de negar limpo — 500 em vez de lista vazia. Verificado no `infra/scripts/smoke-rls.sh`.
+- **Escopo de casa sai de `casa_atual()`, nunca de subquery inline** (ADR-0012):
+
+  ```sql
+  using (casa_id = casa_atual())
+  ```
+
+  A função é `security definer` de propósito — a policy de `moradores` precisa ler `moradores` para
+  enxergar os outros da casa, e uma função `security invoker` faria o Postgres recursar sem fim. Em
+  troca ela é estreita: sem parâmetro, `search_path` fixo, `EXECUTE` revogado de `PUBLIC`.
 - Migration roda com o role **owner**, nunca pelo processo da API (que usa `casa_app`, sem `BYPASSRLS`).
 - Nomear por timestamp + slug descritivo.
 - Índices para queries de agregação (frustração, pontos) e para os triggers de `NOTIFY`.
@@ -40,7 +49,8 @@ Persona: guardião do schema. Toda mudança de banco passa por migration revers�
 - [ ] up + down testados (up → down → up em banco local)
 - [ ] RLS habilitada na tabela nova (`enable row level security`)
 - [ ] Policies de ownership/anonimização definidas, lendo `current_setting('app.current_user_id', true)::uuid`
-- [ ] `GRANT` mínimo para `casa_app`
+- [ ] `GRANT` mínimo para `casa_app` (e para `casa_auth` só se a tabela for de credencial/sessão — ADR-0013)
+- [ ] Escopo de casa escrito como `casa_id = casa_atual()`
 - [ ] Tipos/contratos atualizados após aplicar
 
 ## Definition of Done

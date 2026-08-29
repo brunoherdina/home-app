@@ -26,6 +26,13 @@ Persona: engenheiro de confiabilidade. Regras de negócio moram aqui e na camada
   ```
 
   A identidade entra por `set_config('app.current_user_id', $1, true)` e **não** por `SET LOCAL app.current_user_id = $1`: `SET` não aceita bind parameter.
+- **Rota pública de auth usa `semIdentidade`, não o pool cru** (ADR-0013). Ela abre transação com
+  `SET LOCAL ROLE casa_auth`, num pool separado que só tem grant em credencial e sessão. `npm run
+  guards` exige que todo handler passe por um dos dois plugins.
+- **Rotação de refresh precisa de janela de graça** (ADR-0008): app mobile dispara requests em paralelo
+  e retenta em rede ruim. Refresh consumido há menos de ~30 s devolve o par sucessor; consumido antes
+  disso é vazamento e revoga a família. Sem a janela, retry legítimo desloga o usuário — e o beta lê
+  isso como abandono.
 - O boot da API recusa subir se o pool for superusuário, tiver `BYPASSRLS` ou for dono de tabela (`afirmaContratoDeRls`). Contrato quebrado falha no start, não em produção.
 - **Auth** em `/api/auth`, desenho do `improvisa-ai` reescrito em TS (ADR-0003): JWT HS256 com `sub` + `jti`, senha em argon2, Google/Apple, verificação de e-mail por token de 24 h, logout por blocklist de `jti` em Postgres. **Bearer-first — sem cookie**, o cliente é RN.
 - **Par access + refresh desde o Épico 1** (ADR-0008): access ~15 min, refresh de 30–90 dias com **rotação a cada uso**. Refresh já consumido chegando de novo = vazamento → revogar a família inteira de tokens e forçar login. Logout de verdade é revogar o refresh, não descartar o access no cliente.

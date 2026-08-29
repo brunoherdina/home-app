@@ -73,7 +73,8 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
 - **Meta:** a API acessível de fora, com os dados sobrevivendo a um acidente.
 - **Entregáveis:** provedor de VPS escolhido; compose em produção; **Caddy + TLS**; migration como job
   de deploy (role owner, nunca o processo da API); `pg_dump` agendado com **destino offsite**; runbook
-  de restore; CI mínimo.
+  de restore; CI mínimo; **provedor de envio de e-mail** + domínio, que destrava a verificação de
+  e-mail gerada no Épico 1.
 - **DoD:** API responde com TLS por domínio próprio; Postgres **sem porta publicada** no host;
   **restore do backup executado com sucesso ao menos uma vez**; nenhum segredo no repositório nem no
   bundle do app.
@@ -83,21 +84,54 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
 
 ## Épico 1 — Identidade & Casa
 
-- **Meta:** uma pessoa cria ou entra numa casa e cai numa casa já povoada.
-- **Entregáveis:** auth própria em `/api/auth` (apelido/e-mail + senha, Google, **Apple** — exigida
-  pela App Store quando há outro social no iOS); **par access curto + refresh rotativo** com detecção
-  de reuso, refresh no `expo-secure-store` (**ADR-0008** — antecipado do Épico 6); blocklist de `jti`
-  em Postgres (ADR-0003); formulários com React Hook Form + zod compartilhado (ADR-0009); criar casa
-  (nome + tipo); **template por tipo de casa** (semear tarefas de casal/república/família); apelido +
-  cor pro convidado; **fundação de RLS** (tudo escopado por casa; modelar já as tabelas de dados
-  sensíveis sem coluna de atribuição, e **sem coluna de sobrecarga por pessoa** — ADR-0011).
-- **DoD:** signup → cria/entra na casa → vê casa povoada; RLS impede ver dados de outra casa **provada
-  no banco com `SET ROLE casa_app`, não só pelo endpoint**; schema de frustração/aspiração já anônimo
-  por design; **refresh reusado revoga a família de tokens** e força login (teste, não intenção).
+- **Meta:** uma pessoa cria uma casa e cai numa casa já povoada, em menos de um minuto.
+- **Entregáveis:** auth própria em `/api/auth` (e-mail + senha, Google); **par access curto + refresh
+  rotativo** com detecção de reuso **e janela de graça**, refresh no `expo-secure-store` (**ADR-0008**);
+  blocklist de `jti` em Postgres (ADR-0003); **role `casa_auth` + plugin `semIdentidade`** para as rotas
+  que ainda não têm identidade (**ADR-0013**); **identidade = morador e escopo por `casa_atual()`**
+  (**ADR-0012**); formulários com React Hook Form + zod compartilhado (ADR-0009); criar casa
+  (nome + tipo); **template por tipo de casa** semeando `tarefas` mínimas; apelido + cor; no app,
+  TanStack Query (ADR-0006) + interceptor `401 → refresh → retry` e sessão restaurada antes do splash
+  sair; rate limit em `/api/auth/login`.
+- **Fora do escopo, deliberadamente** (decidido em 2026-08-29 — todos dependem de acesso externo):
+  - **Apple Sign In → Épico 6.** Exige conta Apple Developer paga e build iOS; não roda em Expo Go. A
+    coluna `apple_sub` nasce no schema agora para não virar migration depois.
+  - **Envio do e-mail de verificação → Épico 0b.** O token de 24 h é gerado e gravado no Épico 1; o
+    transporte é log no console até existir domínio e provedor (decisão nº 5).
+  - **Ramo "tem convite" da Fase 0 → Épico 2.** Aceitar convite exige URL pública e deep link, que são
+    0b + Épico 2. O Épico 1 entrega o **ramo do criador** ponta a ponta e só o *schema* do convite.
+- **DoD:** signup → cria casa → **casa povoada pelo template**; RLS impede ver dados de outra casa
+  **provada no banco com `SET ROLE casa_app`, não só pelo endpoint**; schema de frustração/aspiração
+  nasce sem coluna de atribuição e sem coluna de sobrecarga por pessoa (ADR-0011); **refresh reusado
+  revoga a família de tokens** e força login (teste, não intenção); **dois requests paralelos com o
+  mesmo refresh não deslogam ninguém**; `casa_auth` sem `SELECT` em tabela de dado sensível;
+  `npm run verify` verde.
+
+### Quebra em stories
+
+| # | Camada | Story | Critério de aceite |
+|---|---|---|---|
+| 1 | dados | `moradores` (credencial + casa), `casas`, `casa_atual()`, policies escopadas | `check:rls` nega leitura cruzada entre duas casas; `casa_atual()` sem `EXECUTE` para `PUBLIC` |
+| 2 | dados | `sessoes` (família, `jti`, sucessor, consumido_em) e `revoked_tokens` | migration passa em `check:migration` (up → down → up) |
+| 3 | infra | role `casa_auth` no initdb + `AUTH_DATABASE_URL` + boot assertion nos dois pools | `check:roles` reprova se `casa_auth` ganhar `SELECT` em dado sensível |
+| 4 | backend | `semIdentidade` + rotas públicas (`register`, `login`, `refresh`) | `npm run guards` verde — nenhum handler toca o pool cru |
+| 5 | backend | rotação, detecção de reuso e **janela de graça** | refresh consumido há > 30 s revoga a família; consumido há < 30 s devolve o par sucessor sem revogar |
+| 6 | backend | criar casa + semear template por tipo | seed roda **antes** do `FORCE RLS` (armadilha do `infra/README.md`) |
+| 7 | contracts | zod de auth, casa e morador | o mesmo schema valida o formulário e o payload no handler |
+| 8 | client | Query + `lib/api` com `401 → refresh → retry` + SecureStore | token expirado renova e retenta **uma** vez; segundo 401 desloga |
+| 9 | UI | Fase 0, ramo do criador (apelido → casa → povoada) | fluxo completo em < 1 min num device físico |
+
 - **Depende de:** Épico 0a.
-- **Onboarding que destrava:** **Fase 0** (ambos os ramos: cria a casa / tem convite).
+- **Onboarding que destrava:** **Fase 0**, ramo *cria a casa*. O ramo *tem convite* fecha no Épico 2.
 - **Skills:** `casa-backend-dev`, `casa-migrations`, `casa-seguranca-privacidade`, `casa-mobile-dev`,
   `casa-dominio-cooperacao` (valida "sem atribuição" já no modelo).
+
+> [!note] Tabelas sensíveis vazias
+> O manifesto §2.2 pede modelar frustração/aspiração/pulso já aqui. Decisão do tech lead: **não criar
+> tabela que ninguém escreve** — tabela fantasma envelhece errado. O invariante ("nenhuma tabela
+> sensível nasce com coluna de atribuição") vale como critério de revisão e teste do `casa-qa`; o DDL
+> nasce no Épico 4, junto com quem escreve nele.
+
 
 ## Épico 2 — Tarefas & Divisão
 
@@ -105,7 +139,9 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
 - **Entregáveis:** aba **Tarefas** (Todas / Minhas / Livres); concluir tarefa; **pontos por peso de
   esforço**; **3 modos** (Rodízio / Fixo / Aberta); **rodízio + pontos-bônus** na tarefa detestada,
   com marcação manual por enquanto (**ADR-0010**; a detecção automática vem do Épico 4); FAB pra
-  adicionar; **convite** (WhatsApp / QR / código curto, "sem labirinto").
+  adicionar; **convite** (WhatsApp / QR / código curto, "sem labirinto") **e o ramo *tem convite* da
+  Fase 0** — abrir o convite, ver a casa e quem já entrou, escolher apelido + cor e entrar (herdado do
+  Épico 1 em 2026-08-29: aceitar convite exige URL pública, que só existe depois do 0b).
 - **Pré-requisito de infra:** o convite exige URL pública → **o Épico 0b precisa estar fechado aqui**.
 - **DoD:** dois moradores na casa; atribuir/concluir; pontos acumulam; convite entrega a pessoa dentro
   da casa vendo quem já entrou; **os pontos-bônus não aparecem em nenhuma comparação entre moradores**
@@ -167,7 +203,8 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
   revisar o **runbook de operação da VPS** do 0b (restore, rotação de segredo, update de imagem);
   **ligar a publicação OTA** que ficou instalada e adormecida desde o 0a (ADR-0007); decidir **E2E**
   (Maestro × Detox); *(opcional)* analytics (PostHog); **decisão de modelo de negócio**;
-  **política LGPD + termos**.
+  **política LGPD + termos**; **Sign in with Apple** (herdado do Épico 1 — exige conta Apple Developer
+  paga e build iOS; a App Store passa a exigi-lo porque o app oferece Google).
 - **DoD:** beta instalável e usável pelos dois; gaps sinalizáveis do manifesto endereçados ou
   agendados.
 - **Depende de:** todos.
@@ -179,7 +216,8 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
 
 | Fase de onboarding | Entregue em |
 |---|---|
-| Fase 0 (criar/entrar, casa povoada) | Épico 1 |
+| Fase 0, ramo *cria a casa* | Épico 1 |
+| Fase 0, ramo *tem convite* | Épico 2 (precisa de URL pública) |
 | Fase 1 (convidar + concluir 1 tarefa) | Épico 2 |
 | Fase 2 (setup progressivo D0–D7) | Épicos 3–4 (telas) + Épico 5 (motor de nudges) |
 | Convite sem fricção | Épico 2 |

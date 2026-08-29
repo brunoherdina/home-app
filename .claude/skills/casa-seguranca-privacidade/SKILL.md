@@ -34,6 +34,10 @@ Contrato:
   `SET LOCAL` morre com a transação — não vaza identidade entre requests do mesmo pool.
 - Policies leem a identidade sempre por `nullif(current_setting('app.current_user_id', true), '')::uuid`. O `nullif` não é estilo: `SET LOCAL` reseta o GUC para **string vazia** ao fim da transação, e sem ele a próxima request naquela conexão do pool recebe `22P02` em vez de zero linhas.
 - Tabela sensível leva `FORCE ROW LEVEL SECURITY` — sem isso a policy é invisível para o owner.
+- **Rota sem identidade tem role próprio, não exceção** (ADR-0013): `register`/`login`/`refresh` rodam
+  pelo plugin `semIdentidade`, num pool separado com o role `casa_auth` — também `NOBYPASSRLS`, também
+  dono de nada, com `GRANT` só em credencial e sessão. Pool separado e **não** `GRANT casa_auth TO
+  casa_app`: se um role pudesse virar o outro por `SET ROLE`, o limite viraria convenção.
 - Credencial administrativa nunca é usada por handler de request.
 - O contrato é verificável a qualquer momento: `infra/scripts/check-roles.sh` (catálogo) e `infra/scripts/smoke-rls.sh` (a policy nega de fato).
 
@@ -43,12 +47,14 @@ Contrato:
 2. **Frustração / incômodo** → só legível como **peso agregado**; linha individual nunca retornável a outro morador.
 3. **Pulso semanal** → termômetro anônimo; sem coluna que ligue humor↔pessoa em leitura de grupo.
 4. **Aspiração "pra mim"** → privada; RLS restringe ao próprio autor. Só "pra casa" vira compartilhada.
-5. **Ownership**: morador só acessa dados da(s) casa(s) que participa. Bloquear IDOR por `casa_id` na policy.
+5. **Ownership**: morador só acessa dados da casa que participa. IDOR se bloqueia por
+   `casa_id = casa_atual()` na policy (ADR-0012) — nunca por `where` no handler. No v1 é **uma casa por
+   conta**; se isso mudar, muda a função, não as policies.
 
 ## Checklist de review de segurança
 
 - [ ] RLS habilitada em toda tabela sensível
-- [ ] Handler passa pelo plugin `withUser` — nunca toca o pool cru
+- [ ] Handler passa por `withUser` ou, se for rota pública de auth, por `semIdentidade` — nunca toca o pool cru
 - [ ] Policy testada **no banco** (`SET ROLE casa_app` + `app.current_user_id` de outro membro), não só pelo endpoint
 - [ ] Aspiração privada inacessível a outros
 - [ ] Sem endpoint/view de ranking por pessoa
