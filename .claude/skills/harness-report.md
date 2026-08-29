@@ -67,11 +67,13 @@ Templates co-localizados: `casa-prd-tasks/create-prd-template.md`, `casa-prd-tas
 - **Nome "Casa"**: confirmar disponibilidade/marca.
 - **PostHog/analytics**: decidir instrumentação → reincluir `casa-analytics` se sim.
 - **Docs raiz ausentes** (fora do escopo desta skill, mas as skills apontam pra eles):
-  - `CLAUDE.md` raiz — várias skills referenciam via `../../../`; criar no bootstrap de harness completo.
+  - `CLAUDE.md` raiz — várias skills referenciam via `../../../`; criar no bootstrap de harness
+    completo. O `README.md` da raiz já existe (2026-08-28), mas não substitui o `CLAUDE.md`.
   - `docs/adr/`, `docs/prds/` — pastas referenciadas, ainda não existem.
   - ~~`casa-decisoes-produto.md`~~ ✅ criado em 2026-08-28 com os ADRs.
   - ~~`casa-roadmap-implementacao.md`~~ ✅ presente.
-  - `tokens.json` — referenciado por `ux-ui`/`design-sync`; exportar do Figma.
+  - `tokens.json` — referenciado por `ux-ui`/`design-sync`; exportar do Figma. Os **nomes** já estão
+    em `apps/mobile/src/design-system/tokens.ts`; os valores hex são provisórios e marcados como tal.
   - `.mcp.json` — referenciado por `casa-design-sync` (Figma MCP); ainda não existe.
   - `references/figma-caveats.md` — referenciado por `casa-ux-ui`; ainda não existe.
 
@@ -95,8 +97,12 @@ Proposta reproduz o conjunto esperado do manifesto: 7 núcleo + condicionais (mo
 2. ~~Resolver as decisões em aberto via `casa-product-owner`~~ → 7 fechadas em 2026-08-28
    (ADR-0007 a ADR-0011, o corte 0a/0b, e a primeira tela a prototipar). Restam 4, todas fora do 0a.
 3. Bootstrap de harness completo: `CLAUDE.md` raiz + `docs/context/` (outra tarefa).
-4. **Épico 0a**: `infra/docker-compose.yml` local + os dois roles + `withUser` — é o que destrava o
-   ADR-0002 na prática, e as guardas de camada do `casa-qa` entram **antes do primeiro endpoint**.
+4. ~~**Épico 0a**: compose local + roles + `withUser`~~ ✅ **2026-08-28**. Entregues: monorepo
+   (Expo + Fastify + `packages/contracts`), compose com `postgres`/`api`/`worker`, os três roles,
+   plugin `withUser`, 1ª migration com `down.sql` à mão, e as guardas de camada executáveis
+   (`npm run verify`) — antes do primeiro endpoint de domínio, como o DoD exige.
+   **Aberto no 0a:** `tokens.json` (depende do Figma), `eas init` (depende de conta Expo) e o teste
+   no **device físico** (depende da máquina do Bruno — runbook em `apps/mobile/README.md`).
 5. Exportar `tokens.json` do Figma; prototipar o **criador da Fase 0**.
 6. Épico 1 (Identidade & Casa): auth com refresh + modelo de dados + RLS + onboarding Fase 0.
 7. Épico 0b (VPS, TLS, backup com restore testado) **antes do convite do Épico 2**.

@@ -4,7 +4,10 @@
 # serviço `caddy`. As duas diferenças deliberadas do 0a estão marcadas com
 # `# 0a-only` — ambas precisam sumir antes do deploy.
 #
-# Os serviços `api` e `worker` entram quando o skeleton do monorepo existir.
+# `api` e `worker` ficam no profile `app`. Sem ele, `docker compose up` sobe só o
+# Postgres — que é o fluxo de desenvolvimento (a API roda no host com hot reload
+# e o Expo alcança ela pela rede). Com `--profile app`, sobe a paridade com
+# produção. No 0b o profile some: lá tudo sobe junto.
 
 name: casa
 
@@ -35,6 +38,41 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  api:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # casa_app, sempre. A credencial de casa_owner não entra neste container:
+      # migration é passo de deploy, não algo que a API faz ao subir (ADR-0002).
+      DATABASE_URL: postgres://casa_app:${CASA_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PORT: 3333
+      HOST: 0.0.0.0
+      NODE_ENV: ${NODE_ENV:-development}
+    ports:
+      # 0a-only: em produção quem publica porta é o Caddy; a API fica só na rede
+      # interna do compose.
+      - "127.0.0.1:${PORT:-3333}:3333"
+
+  worker:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://casa_app:${CASA_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      NODE_ENV: ${NODE_ENV:-development}
+    command: ["npx", "tsx", "worker/index.ts"]
 
 volumes:
   postgres-data:

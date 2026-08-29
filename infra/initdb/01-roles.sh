@@ -29,6 +29,9 @@ CREATE ROLE casa_app
 -- Ninguém entra no banco por ser PUBLIC.
 REVOKE ALL ON DATABASE :"db_name" FROM PUBLIC;
 GRANT CONNECT ON DATABASE :"db_name" TO casa_owner, casa_app;
+-- Só o owner cria schema: o migrator do drizzle registra o histórico em um
+-- schema próprio (`drizzle`). casa_app fica só com CONNECT.
+GRANT CREATE ON DATABASE :"db_name" TO casa_owner;
 
 -- O schema público pertence ao owner de migration; a API só o enxerga.
 ALTER SCHEMA public OWNER TO casa_owner;

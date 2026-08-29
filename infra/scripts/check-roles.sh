@@ -53,6 +53,11 @@ afirma "casa_app não é dono de nenhuma tabela" "0" \
 sem_rls="$(exec_sql "select coalesce(string_agg(relname, ', '), '') from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity")"
 afirma "nenhuma tabela sem RLS habilitada" "" "$sem_rls"
 
+# Sem FORCE, a policy não vale para o dono da tabela — e migration/manutenção
+# rodando como casa_owner passaria por cima dela sem avisar.
+sem_force="$(exec_sql "select coalesce(string_agg(relname, ', '), '') from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity and not c.relforcerowsecurity")"
+afirma "nenhuma tabela com RLS sem FORCE" "" "$sem_force"
+
 if ((falhas > 0)); then
   echo
   echo "$falhas asserção(ões) falharam — o contrato do ADR-0002 está quebrado."

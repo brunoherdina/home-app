@@ -1,13 +1,28 @@
 # Infra local — Épico 0a
 
-Postgres em container com os dois roles do **ADR-0002**. Sem VPS, sem TLS, sem
-backup: isso é Épico 0b, e precisa fechar antes do convite do Épico 2.
+Postgres, API e worker em container, com os três roles do **ADR-0002**. Sem VPS,
+sem TLS, sem backup: isso é Épico 0b, e precisa fechar antes do convite do
+Épico 2.
 
 ## Subir
 
 ```bash
-cp infra/.env.example infra/.env   # preencher as três senhas
-cd infra && docker compose up -d
+cp infra/.env.example infra/.env   # preencher as três senhas e as duas URLs
+npm run db:up                      # sobe só o Postgres
+```
+
+`api` e `worker` estão no profile `app` e ficam de fora por padrão. O fluxo de
+desenvolvimento é banco no container e API no host, com hot reload:
+
+```bash
+npm run dev -w @casa/api
+```
+
+Para conferir paridade com produção (a API dentro do container, como vai rodar
+no 0b):
+
+```bash
+cd infra && docker compose --env-file .env --profile app up -d --build
 ```
 
 O `infra/.env` é gitignorado. As senhas nascem com `openssl rand -base64 24`.
@@ -19,15 +34,22 @@ O `infra/.env` é gitignorado. As senhas nascem com `openssl rand -base64 24`.
 ## Provar o contrato
 
 ```bash
-infra/scripts/check-roles.sh   # o catálogo confere com o ADR-0002
-infra/scripts/smoke-rls.sh     # a policy realmente nega
+npm run check:roles       # o catálogo confere com o ADR-0002
+npm run check:rls         # a policy realmente nega
+npm run check:migration   # up → down → up: o down.sql não é decorativo
+npm run verify            # os três + guardas de camada + typecheck
 ```
 
-Os dois rodam contra o Postgres do compose, e é essa a graça: mock de RLS não
+Todos rodam contra o Postgres do compose, e é essa a graça: mock de RLS não
 prova nada. Rodar depois de **toda** migration — `check-roles.sh` afirma que
-nenhuma tabela nasceu sem RLS e que `casa_app` não virou dona de nada.
+nenhuma tabela nasceu sem RLS, que nenhuma RLS ficou sem `FORCE`, e que
+`casa_app` não virou dona de nada.
 
-## Os dois roles
+O contrato também é checado no boot da API: se o pool conectar como
+superusuário, com `BYPASSRLS` ou como dono de tabela, o processo **não sobe**
+(`afirmaContratoDeRls`, em `apps/api/src/db/pool.ts`).
+
+## Os três roles
 
 | Role | Quem usa | Pode |
 |---|---|---|
@@ -54,7 +76,22 @@ a tabela sem policy, que vaza calada.
    using (autor = nullif(current_setting('app.current_user_id', true), '')::uuid)
    ```
 
+## Migrations
+
+Rodam como `casa_owner`, nunca pelo processo da API:
+
+```bash
+npm run db:generate -w @casa/api   # drizzle-kit gera o .sql
+# escrever à mão: policy, GRANT e o 000X_nome.down.sql
+npm run db:migrate -w @casa/api
+npm run check:migration
+```
+
+O drizzle-kit não gera `down` (ADR-0005). O `down.sql` ao lado do gerado é a
+disciplina; o teste up → down → up é o que a torna cobrável.
+
 ## Ainda não está aqui
 
-`api` e `worker` entram no compose quando o skeleton do monorepo existir. `caddy`,
-backup com restore testado e CI são do Épico 0b.
+`caddy`, backup com restore testado e CI são do Épico 0b. A imagem da API roda
+`tsx` direto em produção — trocar por build compilado quando o tamanho importar,
+não antes.

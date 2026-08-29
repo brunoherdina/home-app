@@ -27,10 +27,13 @@ Baratas de escrever, impedem erosão silenciosa — o tipo de defeito que **nenh
 2. **API**: nenhum handler toca o pool cru; tudo pelo plugin `withUser` (ADR-0002). Sem esta, um handler fura a RLS e a suíte fica verde.
 3. **Cor literal**: `#hex`/`rgba()` fora do design system reprova.
 
+As três são executáveis: `npm run guards` (fonte em `scripts/guards/`). Falham
+com `exit 1`, então servem de passo de CI no Épico 0b.
+
 ## Testes que o servidor próprio exige
 
-- **Negação por identidade**: para cada tabela sensível, abrir transação como `casa_app` com o `app.current_user_id` de **outro** membro e afirmar zero linhas atribuíveis. Roda contra o Postgres do compose — mock de RLS não prova nada.
-- **Migration up → down → up**: o drizzle-kit não gera `down` (ADR-0005); este teste é o que torna a reversibilidade cobrável.
+- **Negação por identidade**: para cada tabela sensível, abrir transação como `casa_app` com o `app.current_user_id` de **outro** membro e afirmar zero linhas atribuíveis. Roda contra o Postgres do compose — mock de RLS não prova nada. Piso pronto em `npm run check:rls`; `npm run check:roles` cobre o catálogo.
+- **Migration up → down → up**: o drizzle-kit não gera `down` (ADR-0005); este teste é o que torna a reversibilidade cobrável. Automatizado em `npm run check:migration`.
 - **Idempotência de job**: rodar o job do worker duas vezes e afirmar efeito único.
 
 ## Cobertura mínima
@@ -45,7 +48,7 @@ Maestro × Detox segue em aberto (handoff §11). Até decidir, E2E fica aqui com
 ## Definition of Done
 
 - Testes de intenção para o que a task mudou.
-- Guardas de camada passando.
+- `npm run verify` verde (guardas + roles + RLS + typecheck).
 - Verde local; sem teste flaky.
 
 ## Contexto adicional

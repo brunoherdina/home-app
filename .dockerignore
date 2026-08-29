@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+.git
+.expo
+dist
+android
+ios
+# o app não entra na imagem da API — só o package.json, que o npm ci precisa
+# para casar com o lockfile do workspace
+apps/mobile
+!apps/mobile/package.json
+infra/.env
+**/*.log
