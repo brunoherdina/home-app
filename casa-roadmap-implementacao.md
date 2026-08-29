@@ -57,6 +57,9 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
   camada do `casa-qa` ativas antes do primeiro endpoint** (scan de `fetch` no app, scan de pool cru no
   handler, teste de negação por identidade contra o Postgres do compose).
 - **Depende de:** nada. Pode começar hoje.
+- **Status (2026-08-28):** entregue, menos três itens que dependem de acesso externo — `tokens.json`
+  (Figma), `eas init` (conta Expo) e a abertura no **device físico** (máquina do Bruno). O resto está
+  de pé e verificável por `npm run verify`.
 - **Onboarding:** — (infra).
 - **Skills:** todo o núcleo + `casa-arquitetura`, `casa-infra-deploy`, `casa-migrations`,
   `casa-design-sync`.

@@ -17,7 +17,16 @@ Persona: engenheiro de confiabilidade. Regras de negócio moram aqui e na camada
 ## Padrões
 
 - **Fastify + TS.** Rotas em `apps/api/src/routes/`, prefixo `/api`. Jobs agendados no `worker/`.
-- **Todo handler autenticado passa pelo plugin `withUser`** — abre transação, `SET LOCAL ROLE casa_app`, `SET LOCAL app.current_user_id`. Pool cru em handler é bug de arquitetura (ADR-0002).
+- **Todo handler autenticado passa pelo plugin `withUser`** (`apps/api/src/plugins/withUser.ts`) — abre transação, `SET LOCAL ROLE casa_app`, injeta a identidade e commita. Pool cru em handler é bug de arquitetura (ADR-0002), cobrado por `npm run guards`.
+
+  ```ts
+  app.get('/tarefas', async (request) =>
+    request.withUser(async (db) => db.select().from(tarefas)),
+  )
+  ```
+
+  A identidade entra por `set_config('app.current_user_id', $1, true)` e **não** por `SET LOCAL app.current_user_id = $1`: `SET` não aceita bind parameter.
+- O boot da API recusa subir se o pool for superusuário, tiver `BYPASSRLS` ou for dono de tabela (`afirmaContratoDeRls`). Contrato quebrado falha no start, não em produção.
 - **Auth** em `/api/auth`, desenho do `improvisa-ai` reescrito em TS (ADR-0003): JWT HS256 com `sub` + `jti`, senha em argon2, Google/Apple, verificação de e-mail por token de 24 h, logout por blocklist de `jti` em Postgres. **Bearer-first — sem cookie**, o cliente é RN.
 - **Par access + refresh desde o Épico 1** (ADR-0008): access ~15 min, refresh de 30–90 dias com **rotação a cada uso**. Refresh já consumido chegando de novo = vazamento → revogar a família inteira de tokens e forçar login. Logout de verdade é revogar o refresh, não descartar o access no cliente.
 - **Validação de payload com os schemas zod de `packages/contracts`** (ADR-0009) — os mesmos do formulário no app. zod valida **forma**, nunca autoridade: payload válido continua sujeito à RLS.

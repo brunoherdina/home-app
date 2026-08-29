@@ -1,0 +1,32 @@
+{
+  "name": "casa",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Casa — app de cooperação doméstica. Monorepo: app Expo, API Fastify, contratos zod.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "db:up": "docker compose -f infra/docker-compose.yml --env-file infra/.env up -d",
+    "db:down": "docker compose -f infra/docker-compose.yml --env-file infra/.env down",
+    "db:logs": "docker compose -f infra/docker-compose.yml --env-file infra/.env logs -f postgres",
+    "check:roles": "infra/scripts/check-roles.sh",
+    "check:rls": "infra/scripts/smoke-rls.sh",
+    "check:migration": "infra/scripts/check-migration.sh",
+    "guards": "node scripts/guards/run-guards.mjs",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "verify": "npm run guards && npm run check:roles && npm run check:rls && npm run typecheck"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "allowScripts": {
+    "esbuild@0.18.20": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true
+  }
+}

@@ -1,0 +1,78 @@
+# Casa — compose de desenvolvimento local (Épico 0a).
+#
+# Este é o MESMO arquivo que serve produção (Épico 0b): lá muda o env e entra o
+# serviço `caddy`. As duas diferenças deliberadas do 0a estão marcadas com
+# `# 0a-only` — ambas precisam sumir antes do deploy.
+#
+# `api` e `worker` ficam no profile `app`. Sem ele, `docker compose up` sobe só o
+# Postgres — que é o fluxo de desenvolvimento (a API roda no host com hot reload
+# e o Expo alcança ela pela rede). Com `--profile app`, sobe a paridade com
+# produção. No 0b o profile some: lá tudo sobe junto.
+
+name: casa
+
+services:
+  postgres:
+    image: postgres:17.2-alpine # tag fixa: update é ação deliberada
+    restart: unless-stopped
+    environment:
+      # superusuário de bootstrap — usado só pelo initdb e por backup/restore.
+      # Nem a API nem as migrations se conectam com ele.
+      POSTGRES_USER: ${POSTGRES_SUPERUSER}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # consumidos pelos scripts de initdb/ (ver infra/initdb/01-roles.sh)
+      CASA_OWNER_PASSWORD: ${CASA_OWNER_PASSWORD}
+      CASA_APP_PASSWORD: ${CASA_APP_PASSWORD}
+    ports:
+      # 0a-only: preso ao loopback para o drizzle-kit e os testes de negação
+      # alcançarem o banco a partir do host. Em produção o Postgres NÃO publica
+      # porta — quem escuta na internet é só o Caddy.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data # volume nomeado: bind mount quebra permissão por UID
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # casa_app, sempre. A credencial de casa_owner não entra neste container:
+      # migration é passo de deploy, não algo que a API faz ao subir (ADR-0002).
+      DATABASE_URL: postgres://casa_app:${CASA_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PORT: 3333
+      HOST: 0.0.0.0
+      NODE_ENV: ${NODE_ENV:-development}
+    ports:
+      # 0a-only: em produção quem publica porta é o Caddy; a API fica só na rede
+      # interna do compose.
+      - "127.0.0.1:${PORT:-3333}:3333"
+
+  worker:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://casa_app:${CASA_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      NODE_ENV: ${NODE_ENV:-development}
+    command: ["npx", "tsx", "worker/index.ts"]
+
+volumes:
+  postgres-data:
