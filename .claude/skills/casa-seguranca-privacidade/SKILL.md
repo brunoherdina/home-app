@@ -32,8 +32,10 @@ Contrato:
   ```
 
   `SET LOCAL` morre com a transação — não vaza identidade entre requests do mesmo pool.
-- Policies leem `current_setting('app.current_user_id', true)::uuid`.
+- Policies leem a identidade sempre por `nullif(current_setting('app.current_user_id', true), '')::uuid`. O `nullif` não é estilo: `SET LOCAL` reseta o GUC para **string vazia** ao fim da transação, e sem ele a próxima request naquela conexão do pool recebe `22P02` em vez de zero linhas.
+- Tabela sensível leva `FORCE ROW LEVEL SECURITY` — sem isso a policy é invisível para o owner.
 - Credencial administrativa nunca é usada por handler de request.
+- O contrato é verificável a qualquer momento: `infra/scripts/check-roles.sh` (catálogo) e `infra/scripts/smoke-rls.sh` (a policy nega de fato).
 
 ## Invariantes a impor (RLS, não UI)
 

@@ -1,0 +1,40 @@
+# Casa — compose de desenvolvimento local (Épico 0a).
+#
+# Este é o MESMO arquivo que serve produção (Épico 0b): lá muda o env e entra o
+# serviço `caddy`. As duas diferenças deliberadas do 0a estão marcadas com
+# `# 0a-only` — ambas precisam sumir antes do deploy.
+#
+# Os serviços `api` e `worker` entram quando o skeleton do monorepo existir.
+
+name: casa
+
+services:
+  postgres:
+    image: postgres:17.2-alpine # tag fixa: update é ação deliberada
+    restart: unless-stopped
+    environment:
+      # superusuário de bootstrap — usado só pelo initdb e por backup/restore.
+      # Nem a API nem as migrations se conectam com ele.
+      POSTGRES_USER: ${POSTGRES_SUPERUSER}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # consumidos pelos scripts de initdb/ (ver infra/initdb/01-roles.sh)
+      CASA_OWNER_PASSWORD: ${CASA_OWNER_PASSWORD}
+      CASA_APP_PASSWORD: ${CASA_APP_PASSWORD}
+    ports:
+      # 0a-only: preso ao loopback para o drizzle-kit e os testes de negação
+      # alcançarem o banco a partir do host. Em produção o Postgres NÃO publica
+      # porta — quem escuta na internet é só o Caddy.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data # volume nomeado: bind mount quebra permissão por UID
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres-data:
