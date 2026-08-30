@@ -124,6 +124,97 @@ describe('interceptor de sessão do cliente', () => {
     expect(cenario.contadores.recurso).toBe(2)
   })
 
+  /**
+   * Falha do refresh que NÃO é negação não pode custar a credencial.
+   * `sessao.expira()` chama `SecureStore.deleteItemAsync`: apagou, acabou —
+   * a pessoa digita a senha de novo. Um 502 do Caddy ou o metrô sem sinal
+   * viraria o logout que o ADR-0008 foi escrito para eliminar, e por queda
+   * de rede em vez dos 7 dias que a ADR ataca.
+   */
+  describe('falha transitória do refresh preserva a credencial', () => {
+    it('API fora do ar (503): a sessão sobrevive e o próximo 401 tenta de novo', async () => {
+      const cenario = await montaCenario({
+        respondeRefresh: (chamada) =>
+          chamada === 1
+            ? respostaJson(503, {})
+            : respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+        respondeRecurso: (accessToken) =>
+          accessToken === 'access-novo'
+            ? respostaJson(200, { ok: true })
+            : respostaJson(401, { codigo: 'TOKEN_VENCIDO', mensagem: 'expirou' }),
+      })
+
+      // A request falha — mas com "tente de novo", não com "entre de novo".
+      await expect(cenario.requisita('/api/recurso', { valida })).rejects.toMatchObject({
+        status: 503,
+        codigo: 'SEM_CONEXAO',
+      })
+
+      expect(cenario.cofre.token).toBe('refresh-antigo')
+      expect(cenario.sessao.leAccessToken()).toBe('access-vencido')
+      expect(cenario.expirouVezes()).toBe(0)
+      expect(cenario.contadores.recurso).toBe(1)
+
+      // O cofre intacto tem que valer alguma coisa: com a API de volta, a
+      // mesma sessão renova sozinha, sem passar pela tela de login.
+      await expect(cenario.requisita('/api/recurso', { valida })).resolves.toEqual({ ok: true })
+      expect(cenario.contadores.refresh).toBe(2)
+      expect(cenario.cofre.token).toBe('refresh-novo')
+      expect(cenario.expirouVezes()).toBe(0)
+    })
+
+    it('rede caída: o cofre continua lá', async () => {
+      const cenario = await montaCenario({
+        respondeRefresh: () => Promise.reject(new TypeError('Network request failed')),
+        respondeRecurso: () => respostaJson(401, { codigo: 'TOKEN_VENCIDO', mensagem: 'expirou' }),
+      })
+
+      // status 0: a request nem chegou a ter resposta — ninguém negou nada.
+      await expect(cenario.requisita('/api/recurso', { valida })).rejects.toMatchObject({
+        status: 0,
+        codigo: 'SEM_CONEXAO',
+      })
+
+      expect(cenario.cofre.token).toBe('refresh-antigo')
+      expect(cenario.expirouVezes()).toBe(0)
+      expect(cenario.contadores.refresh).toBe(1)
+    })
+  })
+
+  /**
+   * `requisita` é o único ponto de saída HTTP do app (a guarda de camada
+   * proíbe `fetch` fora de `lib/api`), então login e register passam por
+   * aqui obrigatoriamente — e o 401 de `/api/auth/login` é credencial
+   * inválida DE PROPÓSITO, não sessão vencida.
+   */
+  it.each(['/api/auth/login', '/api/auth/register'])(
+    '401 em %s não renova, não repete o POST e não apaga o cofre',
+    async (caminho) => {
+      const cenario = await montaCenario({
+        respondeRefresh: () =>
+          respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+        respondeRecurso: () =>
+          respostaJson(401, {
+            codigo: 'CREDENCIAL_INVALIDA',
+            mensagem: 'E-mail ou senha não conferem.',
+          }),
+      })
+
+      // O código real da API chega à tela — não trocado por SESSAO_EXPIRADA.
+      await expect(cenario.requisita(caminho, { method: 'POST', valida })).rejects.toMatchObject({
+        status: 401,
+        codigo: 'CREDENCIAL_INVALIDA',
+      })
+
+      expect(cenario.contadores.refresh).toBe(0)
+      // UMA tentativa: repetir queimaria o rate limit de /api/auth/login.
+      expect(cenario.contadores.recurso).toBe(1)
+      // Errar a senha com sessão viva (trocar de conta) não desloga ninguém.
+      expect(cenario.expirouVezes()).toBe(0)
+      expect(cenario.cofre.token).toBe('refresh-antigo')
+    },
+  )
+
   it('três requests paralelas com 401 compartilham UMA única chamada de refresh', async () => {
     // O refresh só responde depois que as TRÊS requests originais tomaram 401,
     // garantindo que a corrida que o single-flight resolve de fato aconteceu.

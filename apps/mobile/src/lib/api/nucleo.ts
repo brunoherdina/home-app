@@ -18,6 +18,32 @@ export class ErroDaApi extends Error {
   }
 }
 
+/**
+ * Falha que NÃO é o servidor negando a credencial: rede fora, timeout, 5xx.
+ * Ganha código próprio porque a UI (story 9) decide coisas opostas a partir
+ * dele — "tente de novo" aqui, "entre de novo" no SESSAO_EXPIRADA.
+ * `status: 0` = a request nem chegou a ter resposta.
+ */
+function erroTransitorio(status: number) {
+  return new ErroDaApi(
+    status,
+    'SEM_CONEXAO',
+    'Não foi possível falar com o servidor agora. Tente de novo.',
+  )
+}
+
+/**
+ * Rotas públicas de auth, isentas do interceptor: 401 nelas é **resposta**,
+ * não sessão vencida.
+ *
+ * `/api/auth/login` devolve 401 de propósito para credencial inválida — sem a
+ * isenção, errar a senha renovaria a sessão à toa e, se ela estivesse viva
+ * (trocar de conta, criar conta já logado), o POST seria REPETIDO contra o
+ * rate limit do próprio login. `refresh` é o endpoint da renovação: renovar
+ * para renovar seria recursão.
+ */
+const SEM_RENOVACAO = /^\/api\/auth\/(login|register|refresh)\b/
+
 export type OpcoesDoNucleo = {
   baseUrl: string
   sessao: SessaoDoCliente
@@ -61,6 +87,17 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
     return refreshEmVoo
   }
 
+  /**
+   * Devolve `true` se renovou, `false` se o servidor NEGOU a credencial —
+   * e **lança** quando a renovação apenas não pôde acontecer agora.
+   *
+   * A distinção é a regra central deste arquivo: `sessao.expira()` apaga o
+   * refresh do secure store, e credencial apagada não volta. Só o servidor
+   * pode declarar a credencial morta; rede ruim e API reiniciando, não. Sem
+   * isso, o metrô sem sinal ou um 502 de 20 s do Caddy produziriam
+   * exatamente o logout que o ADR-0008 existe para eliminar — e por queda de
+   * rede, não pelos 7 dias que a ADR ataca.
+   */
   async function executaRefresh(): Promise<boolean> {
     const refreshToken = await sessao.leRefreshToken()
     if (!refreshToken) {
@@ -68,26 +105,36 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
       await sessao.expira()
       return false
     }
+
+    let resposta: Response
     try {
-      const resposta = await fetchFn(`${baseUrl}/api/auth/refresh`, {
+      resposta = await fetchFn(`${baseUrl}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
       })
-      if (!resposta.ok) {
-        await sessao.expira()
-        return false
-      }
-      // Rotação (ADR-0008): o par novo substitui o antigo imediatamente —
-      // reapresentar o refresh consumido dispararia a detecção de reuso.
-      await sessao.guardaTokens(validaRespostaRefresh(await resposta.json()))
-      return true
     } catch {
-      // Rede ou corpo fora do contrato: derruba a sessão em vez de re-tentar
-      // aqui — a story 9 decide na UI o que oferecer (novo login, retry).
+      // Rede fora, DNS, timeout: ninguém negou nada. O cofre fica; o próximo
+      // 401 tenta de novo.
+      throw erroTransitorio(0)
+    }
+
+    // Negação explícita (refresh revogado, reusado ou expirado — ADR-0008):
+    // é aqui, e só aqui, que a credencial é destruída.
+    if (resposta.status === 401 || resposta.status === 403) {
       await sessao.expira()
       return false
     }
+
+    // 500/502/503: a API está fora do ar, o refresh continua válido.
+    if (!resposta.ok) throw erroTransitorio(resposta.status)
+
+    // Rotação (ADR-0008): o par novo substitui o antigo imediatamente —
+    // reapresentar o refresh consumido dispararia a detecção de reuso.
+    // Corpo fora do contrato também não é negação: o erro sobe (como em
+    // `valida` no fim de `requisita`) sem levar o cofre junto.
+    await sessao.guardaTokens(validaRespostaRefresh(await resposta.json()))
+    return true
   }
 
   return async function requisita<T>(
@@ -97,7 +144,10 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
     const { valida, ...init } = opcoes
     let resposta = await executa(caminho, init)
 
-    if (resposta.status === 401) {
+    // A isenção precisa vir antes do bloco: `requisita` é o único ponto de
+    // saída HTTP do app, então login e register da story 9 passam por aqui
+    // obrigatoriamente — e o 401 deles é a resposta esperada.
+    if (resposta.status === 401 && !SEM_RENOVACAO.test(caminho)) {
       if (!(await renovaSessao())) {
         // renovaSessao já limpou a sessão e emitiu o evento de expiração.
         throw new ErroDaApi(401, 'SESSAO_EXPIRADA', 'A sessão expirou. Entre de novo.')
