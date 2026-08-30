@@ -19,7 +19,8 @@
     "check:migration": "infra/scripts/check-migration.sh",
     "guards": "node scripts/guards/run-guards.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "verify": "npm run guards && npm run check:roles && npm run check:rls && npm run typecheck"
+    "test": "npm run test --workspaces --if-present",
+    "verify": "npm run guards && npm run check:roles && npm run check:rls && npm run typecheck && npm test"
   },
   "devDependencies": {
     "typescript": "5.9.3"

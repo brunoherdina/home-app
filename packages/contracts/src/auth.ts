@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { apelidoSchema } from './morador'
+import { apelidoSchema, corSchema } from './morador'
 
 /**
  * E-mail normalizado ANTES de validado (por isso o `pipe`, e não checks
@@ -27,9 +27,16 @@ export const senhaSchema = z.string().min(12).max(128)
  * ADR-0009: o mesmo schema roda no resolver do formulário e no handler, e ele
  * valida FORMA — e-mail já cadastrado, por exemplo, não é papel daqui: quem
  * responde é o índice único no banco.
+ *
+ * `cor` viaja junto com o apelido porque as duas escolhas acontecem na MESMA
+ * tela da Fase 0 (ramo do criador — Épico 1, story 9), e `moradores.cor` é
+ * `NOT NULL`: sem o valor no payload, a rota de registro teria que inventar um
+ * default no handler — regra de identidade visual nascendo escondida no
+ * backend, longe do design system.
  */
 export const registroSchema = z.object({
   apelido: apelidoSchema,
+  cor: corSchema,
   email: emailSchema,
   senha: senhaSchema,
 })
