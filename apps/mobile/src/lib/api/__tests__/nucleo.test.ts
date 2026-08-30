@@ -35,8 +35,10 @@ function respostaJson(status: number, corpo: unknown): Response {
 async function montaCenario(opcoes: {
   respondeRefresh: (chamada: number) => Response | Promise<Response>
   respondeRecurso: (accessToken: string | null, chamada: number) => Response | Promise<Response>
+  /** Cofre alternativo, para os cenários em que a leitura do secure store falha. */
+  cofre?: ArmazenamentoRefresh & { token: string | null }
 }) {
-  const cofre = criaArmazenamentoFalso()
+  const cofre = opcoes.cofre ?? criaArmazenamentoFalso()
   const sessao = criaSessao(cofre)
   await sessao.guardaTokens({ accessToken: 'access-vencido', refreshToken: 'refresh-antigo' })
 
@@ -179,6 +181,57 @@ describe('interceptor de sessão do cliente', () => {
       expect(cenario.expirouVezes()).toBe(0)
       expect(cenario.contadores.refresh).toBe(1)
     })
+  })
+
+  /**
+   * A mesma regra uma camada abaixo: quem não pôde LER o cofre também não pode
+   * declarar a credencial morta.
+   *
+   * O Keychain nasce `WHEN_UNLOCKED`: com o device bloqueado `getItemAsync`
+   * lança, mas `deleteItemAsync` funciona. Se "não consegui ler" virar `null`,
+   * o núcleo lê ausência, chama `expira()` e o refresh de 30–90 dias que ainda
+   * valia é apagado — em silêncio, por uma condição que passa sozinha.
+   */
+  it('cofre ilegível não é cofre vazio: o refresh sobrevive e vale ao desbloquear', async () => {
+    const cofre = criaArmazenamentoFalso()
+    let bloqueado = true
+    cofre.le = async () => {
+      // O erro real do expo-secure-store quando o item existe mas não pode ser
+      // decifrado agora (device bloqueado no iOS, restore de backup no Android).
+      if (bloqueado) throw new Error('ERR_SECURESTORE_DECRYPT_ERROR')
+      return cofre.token
+    }
+
+    const cenario = await montaCenario({
+      cofre,
+      respondeRefresh: () =>
+        respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+      respondeRecurso: (accessToken) =>
+        accessToken === 'access-novo'
+          ? respostaJson(200, { ok: true })
+          : respostaJson(401, { codigo: 'TOKEN_VENCIDO', mensagem: 'expirou' }),
+    })
+
+    // Tela apagada, TanStack Query refazendo a query ao reconectar: a request
+    // falha com "tente de novo", não com "entre de novo".
+    await expect(cenario.requisita('/api/recurso', { valida })).rejects.toMatchObject({
+      status: 0,
+      codigo: 'SEM_CONEXAO',
+    })
+
+    expect(cenario.cofre.token).toBe('refresh-antigo')
+    expect(cenario.expirouVezes()).toBe(0)
+    // Nem chegou a apresentar o refresh: não havia o que apresentar.
+    expect(cenario.contadores.refresh).toBe(0)
+
+    // O que prova a intenção não é o erro certo — é o token continuar SERVINDO.
+    // Device desbloqueado, a mesma sessão renova sozinha e a pessoa nunca viu
+    // a tela de login (ADR-0008).
+    bloqueado = false
+    await expect(cenario.requisita('/api/recurso', { valida })).resolves.toEqual({ ok: true })
+    expect(cenario.contadores.refresh).toBe(1)
+    expect(cenario.cofre.token).toBe('refresh-novo')
+    expect(cenario.expirouVezes()).toBe(0)
   })
 
   /**

@@ -89,7 +89,8 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
 
   /**
    * Devolve `true` se renovou, `false` se o servidor NEGOU a credencial —
-   * e **lança** quando a renovação apenas não pôde acontecer agora.
+   * e **lança** quando a renovação apenas não pôde acontecer agora — seja
+   * porque a rede não foi, seja porque o cofre não pôde ser lido.
    *
    * A distinção é a regra central deste arquivo: `sessao.expira()` apaga o
    * refresh do secure store, e credencial apagada não volta. Só o servidor
@@ -99,7 +100,19 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
    * rede, não pelos 7 dias que a ADR ataca.
    */
   async function executaRefresh(): Promise<boolean> {
-    const refreshToken = await sessao.leRefreshToken()
+    let refreshToken: string | null
+    try {
+      refreshToken = await sessao.leRefreshToken()
+    } catch {
+      // Cofre ilegível não é cofre vazio. O secure store falha por condição
+      // passageira — Keychain `WHEN_UNLOCKED` com o device bloqueado, restore
+      // de backup no Android — e nesses casos o refresh continua lá, válido.
+      // Cair no ramo de ausência abaixo chamaria `expira()` →
+      // `deleteItemAsync`, que funciona com o device bloqueado: a credencial
+      // boa morreria por não ter sido lida, e não volta.
+      throw erroTransitorio(0)
+    }
+
     if (!refreshToken) {
       // Sem refresh guardado não há o que renovar — a sessão, se existia, acabou.
       await sessao.expira()

@@ -12,6 +12,12 @@
 
 /** Contrato do cofre do refresh token — cumprido por expo-secure-store no app. */
 export type ArmazenamentoRefresh = {
+  /**
+   * `null` significa **não existe**, e só isso. Falha de leitura (Keychain
+   * bloqueado, keystore em restore de backup) **rejeita**: colapsar as duas em
+   * `null` faz quem lê tratar como sessão acabada e apagar um refresh que
+   * ainda valia. Só o servidor pode declarar a credencial morta.
+   */
   le(): Promise<string | null>
   grava(token: string): Promise<void>
   apaga(): Promise<void>
