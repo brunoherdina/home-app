@@ -24,6 +24,7 @@ services:
       # consumidos pelos scripts de initdb/ (ver infra/initdb/01-roles.sh)
       CASA_OWNER_PASSWORD: ${CASA_OWNER_PASSWORD}
       CASA_APP_PASSWORD: ${CASA_APP_PASSWORD}
+      CASA_AUTH_PASSWORD: ${CASA_AUTH_PASSWORD}
     ports:
       # 0a-only: preso ao loopback para o drizzle-kit e os testes de negação
       # alcançarem o banco a partir do host. Em produção o Postgres NÃO publica
