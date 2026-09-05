@@ -128,6 +128,37 @@ export const revokedTokens = pgTable(
   (tabela) => [index('revoked_tokens_expira_em_idx').on(tabela.expiraEm)],
 )
 
+/**
+ * Tarefas da casa — DDL MÍNIMA, semeada pelo template ao criar a casa
+ * (Épico 1, story 6).
+ *
+ * O que falta aqui é ausência deliberada, não esquecimento: peso de esforço,
+ * modo (Rodízio / Fixo / Aberta), responsável e conclusão são o Épico 2, e
+ * nascem junto com quem escreve neles — mesma regra que manteve
+ * frustração/aspiração fora do schema. Coluna sem fluxo envelhece errado: até
+ * o Épico 2, `peso` seria um número que ninguém lê e uma decisão do ADR-0010
+ * tomada cedo demais.
+ *
+ * Sem `criado_por`: no Épico 1 quem cria toda tarefa é o template, e atribuir
+ * autoria a linha de semente seria inventar dado. Quando a pessoa passar a
+ * criar tarefa (Épico 2), a coluna chega com o fluxo.
+ */
+export const tarefas = pgTable(
+  'tarefas',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Cascade: casa apagada não deixa tarefa órfã que policy nenhuma alcança. */
+    casaId: uuid('casa_id')
+      .notNull()
+      .references(() => casas.id, { onDelete: 'cascade' }),
+    titulo: text('titulo').notNull(),
+    criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+  },
+  // Toda leitura de tarefa é escopada por casa (`casa_atual()`), então este
+  // índice é o caminho da consulta, não otimização especulativa.
+  (tabela) => [index('tarefas_casa_id_idx').on(tabela.casaId)],
+)
+
 export type Casa = typeof casas.$inferSelect
 export type NovaCasa = typeof casas.$inferInsert
 export type Morador = typeof moradores.$inferSelect
@@ -136,3 +167,5 @@ export type Sessao = typeof sessoes.$inferSelect
 export type NovaSessao = typeof sessoes.$inferInsert
 export type RevokedToken = typeof revokedTokens.$inferSelect
 export type NovoRevokedToken = typeof revokedTokens.$inferInsert
+export type Tarefa = typeof tarefas.$inferSelect
+export type NovaTarefa = typeof tarefas.$inferInsert

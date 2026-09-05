@@ -50,11 +50,17 @@ CARLA='33333333-3333-3333-3333-333333333333'
 DORA='44444444-4444-4444-4444-444444444444'
 CASA_A='aaaaaaaa-aaaa-4aaa-8aaa-000000000001'
 CASA_B='bbbbbbbb-bbbb-4bbb-8bbb-000000000002'
+TAREFA_A='cccccccc-cccc-4ccc-8ccc-000000000001'
+TAREFA_B='dddddddd-dddd-4ddd-8ddd-000000000002'
+# A casa que a Dora cria via cria_casa() — id é sorteado pela função, então a
+# limpeza acha pelo nome.
+CASA_DORA='Casa Smoke da Dora'
 
 limpa() {
   como_owner "drop table if exists smoke_rls" >/dev/null 2>&1 || true
+  # moradores antes de casas (FK); tarefas saem por cascade da casa.
   como_admin "delete from moradores where id in ('$ANA','$BRU','$CARLA','$DORA');
-              delete from casas where id in ('$CASA_A','$CASA_B')" >/dev/null 2>&1 || true
+              delete from casas where id in ('$CASA_A','$CASA_B') or nome = '$CASA_DORA'" >/dev/null 2>&1 || true
 }
 trap limpa EXIT
 
@@ -125,6 +131,9 @@ como_admin "
     ('$CARLA', '$CASA_A', 'Carla', 'amber', 'carla.smoke@example.com'),
     ('$BRU',   '$CASA_B', 'Bruno', 'coral', 'bruno.smoke@example.com'),
     ('$DORA',  null,      'Dora',  'lime',  'dora.smoke@example.com');
+  insert into tarefas (id, casa_id, titulo) values
+    ('$TAREFA_A', '$CASA_A', 'Louça da casa A'),
+    ('$TAREFA_B', '$CASA_B', 'Louça da casa B');
 " >/dev/null
 
 # 6. Mesma casa aparece; a outra casa é zero — nem por filtro explícito.
@@ -169,6 +178,37 @@ afirma "casa_auth alcança sessoes" "0" \
   "$(como_auth "select count(*) from sessoes" | tr -d '[:space:]')"
 contem "casa_auth não alcança casas" "permission denied" \
   "$(como_auth "select count(*) from casas")"
+
+# ─── Épico 1, story 6 — tarefas e o caminho ÚNICO para entrar numa casa.
+echo
+echo "story 6 — tarefas escopadas e cria_casa() como único vínculo"
+
+# 11. Tarefa é dado da casa: mesmo predicado, mesma negação cruzada.
+afirma "Ana vê 1 tarefa (a da casa dela)" "1" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; select count(*) from tarefas; commit;" | tr -d '[:space:]')"
+afirma "e não alcança a tarefa da casa B nem por id" "0" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; select count(*) from tarefas where id = '$TAREFA_B'; commit;" | tr -d '[:space:]')"
+afirma "Dora (sem casa) não vê tarefa nenhuma" "0" \
+  "$(como_app "begin; set local app.current_user_id = '$DORA'; select count(*) from tarefas; commit;" | tr -d '[:space:]')"
+contem "tarefas não são assunto do auth" "permission denied" \
+  "$(como_auth "select count(*) from tarefas")"
+
+# 12. O buraco que a função existe para fechar: se casa_app pudesse dar UPDATE
+# em casa_id, a policy "atualiza a si mesmo" deixaria a Dora entrar na casa A
+# só por saber o uuid. O privilégio não existe — a negação vem do GRANT, antes
+# de qualquer policy.
+contem "casa_app não escreve casa_id — entrar em casa não é UPDATE" "permission denied" \
+  "$(como_app "begin; set local app.current_user_id = '$DORA'; update moradores set casa_id = '$CASA_A' where id = '$DORA'; commit;")"
+contem "casa_app não insere casa direto" "permission denied" \
+  "$(como_app "begin; set local app.current_user_id = '$DORA'; insert into casas (nome, tipo) values ('$CASA_DORA', 'casal'); commit;")"
+
+# 13. cria_casa() é o caminho concedido — e só serve uma vez por conta (ADR-0012).
+afirma "cria_casa() vincula a Dora à casa nova" "1" \
+  "$(como_app "begin; set local role casa_app; set local app.current_user_id = '$DORA'; select cria_casa('$CASA_DORA', 'casal'); select count(*) from casas; commit;" | tail -1 | tr -d '[:space:]')"
+contem "e recusa a segunda casa da mesma conta" "morador já tem casa" \
+  "$(como_app "begin; set local role casa_app; set local app.current_user_id = '$DORA'; select cria_casa('outra', 'casal'); commit;")"
+contem "sem identidade, cria_casa() não cria nada" "sem identidade" \
+  "$(como_app "select cria_casa('anonima', 'casal')")"
 
 if ((falhas > 0)); then
   echo; echo "$falhas asserção(ões) falharam — a RLS está decorativa."

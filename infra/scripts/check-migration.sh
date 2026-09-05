@@ -101,13 +101,42 @@ estrutura() { # asserções que valem depois de todo up
   afirma "casa_app executa casa_atual()" "t" \
     "$(como_owner -c "select has_function_privilege('casa_app','casa_atual()','EXECUTE')")"
 
-  # ── casas: casa_app só lê; INSERT chega com o fluxo criar-casa (leva 2).
-  afirma "uma policy em casas" "1" \
+  # ── casas: casa_app só lê. A segunda policy é a de INSERT do casa_owner, que
+  # existe só para o INSERT de dentro de cria_casa() passar pelo FORCE RLS
+  # (0003) — casa_app continua sem INSERT, que é o ponto.
+  afirma "duas policies em casas" "2" \
     "$(como_owner -c "select count(*) from pg_policies where tablename='casas'")"
   afirma "casa_app lê casas" "t" \
     "$(como_owner -c "select has_table_privilege('casa_app','casas','SELECT')")"
   afirma "casa_app não insere casas" "f" \
     "$(como_owner -c "select has_table_privilege('casa_app','casas','INSERT')")"
+
+  # ── story 6: entrar numa casa não é UPDATE, é cria_casa(). O privilégio que
+  # NÃO existe é a asserção mais importante daqui: com UPDATE em casa_id, a
+  # policy "atualiza a si mesmo" viraria porta para entrar em casa alheia.
+  afirma "casa_app NÃO escreve casa_id" "f" \
+    "$(como_owner -c "select has_column_privilege('casa_app','moradores','casa_id','UPDATE')")"
+  afirma "cria_casa() existe" "1" \
+    "$(como_owner -c "select count(*) from pg_proc where proname='cria_casa'")"
+  afirma "cria_casa() é security definer" "t" \
+    "$(como_owner -c "select prosecdef from pg_proc where proname='cria_casa'")"
+  afirma "cria_casa() com search_path fixo" "t" \
+    "$(como_owner -c "select coalesce(array_to_string(proconfig, ',') like '%search_path=public, pg_temp%', false) from pg_proc where proname='cria_casa'")"
+  afirma "cria_casa() não é executável por PUBLIC" "f" \
+    "$(como_owner -c "select has_function_privilege('public','cria_casa(text,tipo_de_casa)','EXECUTE')")"
+  afirma "casa_app executa cria_casa()" "t" \
+    "$(como_owner -c "select has_function_privilege('casa_app','cria_casa(text,tipo_de_casa)','EXECUTE')")"
+
+  # ── tarefas: dado da casa, escopado pelo mesmo casa_atual().
+  afirma "duas policies em tarefas" "2" \
+    "$(como_owner -c "select count(*) from pg_policies where tablename='tarefas'")"
+  afirma "casa_app lê e semeia tarefas" "t" \
+    "$(como_owner -c "select has_table_privilege('casa_app','tarefas','SELECT') and has_table_privilege('casa_app','tarefas','INSERT')")"
+  # Concluir e apagar tarefa são o Épico 2 — chegam com o fluxo.
+  afirma "casa_app não atualiza nem deleta tarefas" "f" \
+    "$(como_owner -c "select has_table_privilege('casa_app','tarefas','UPDATE') or has_table_privilege('casa_app','tarefas','DELETE')")"
+  afirma "casa_auth não alcança tarefas" "f" \
+    "$(como_owner -c "select has_table_privilege('casa_auth','tarefas','SELECT')")"
 
   # ── sessoes e revoked_tokens: assunto do casa_auth (ADR-0013).
   afirma "uma policy em sessoes" "1" \

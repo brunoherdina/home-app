@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { Login, ParDeTokens, Registro } from '@casa/contracts'
 import type { CasaDb } from '../plugins/withUser.js'
+import { codigoPg } from '../db/erros.js'
 import { moradores, sessoes } from '../db/schema.js'
 import { CredencialInvalidaError, ErroHttp, SessaoInvalidaError } from '../erros.js'
 import { conferaSenha, geraHash } from './senha.js'
@@ -299,8 +300,5 @@ export type ServicoDeAuth = ReturnType<typeof criaServicoDeAuth>
  * embrulhado, por isso os dois níveis.
  */
 function ehViolacaoDeUnicidade(erro: unknown): boolean {
-  const codigo = (erro as { code?: unknown })?.code
-  if (codigo === '23505') return true
-  const causa = (erro as { cause?: { code?: unknown } })?.cause
-  return causa?.code === '23505'
+  return codigoPg(erro) === '23505'
 }

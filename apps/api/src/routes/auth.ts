@@ -7,18 +7,8 @@ import {
   refreshSchema,
   registroSchema,
 } from '@casa/contracts'
-import { config } from '../config.js'
 import { ErroHttp, PayloadInvalidoError, SessaoInvalidaError } from '../erros.js'
-import { criaServicoDeAuth } from '../auth/servico.js'
-import { criaTokens } from '../auth/tokens.js'
-
-const tokens = criaTokens({
-  segredo: config.JWT_SECRET,
-  ttlAcessoSegundos: config.ACCESS_TTL_SEGUNDOS,
-  ttlRefreshDias: config.REFRESH_TTL_DIAS,
-})
-
-const auth = criaServicoDeAuth(tokens, { gracaSegundos: config.REFRESH_GRACA_SEGUNDOS })
+import { auth } from '../auth/instancia.js'
 
 /** ADR-0009: o mesmo schema que valida o formulário no app valida o payload aqui. */
 function valida<T extends z.ZodType>(schema: T, corpo: unknown): z.infer<T> {

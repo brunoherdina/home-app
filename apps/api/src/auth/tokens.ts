@@ -125,7 +125,37 @@ export function criaTokens(cfg: ConfigDeTokens) {
     return { moradorId: payload.sub, jti: payload.jti }
   }
 
-  return { assinaAcesso, assinaRefresh, assinaRefreshDe, verificaRefresh }
+  /**
+   * O crachá que toda rota autenticada apresenta — e nada mais que isso.
+   *
+   * Devolve só o `sub`, que vira `app.current_user_id` na transação do
+   * `withUser` (ADR-0002). Não devolve casa, papel nem permissão de propósito:
+   * um access token de 15 min carregaria uma cópia envelhecida do estado, e
+   * quem decide acesso é a policy, não o payload assinado. Sair da casa não
+   * pode depender de esperar o token vencer.
+   *
+   * A blocklist de `jti` (ADR-0003) NÃO é consultada aqui: ela é o logout, e o
+   * logout ainda não existe. Quando existir, é uma query a mais neste ponto —
+   * o `jti` já vem no payload por isso.
+   */
+  async function verificaAcesso(token: string): Promise<string> {
+    let payload
+    try {
+      ;({ payload } = await jwtVerify(token, chave, { algorithms: [ALG] }))
+    } catch {
+      throw new SessaoInvalidaError()
+    }
+
+    // Sem esta linha, o refresh — que vive 60 dias — abriria rota autenticada
+    // como se fosse o access de 15 min. É o mesmo par de checagens de
+    // `verificaRefresh`, na direção oposta.
+    if (payload.tipo !== TIPO_ACESSO) throw new SessaoInvalidaError()
+    if (!payload.sub) throw new SessaoInvalidaError()
+
+    return payload.sub
+  }
+
+  return { assinaAcesso, assinaRefresh, assinaRefreshDe, verificaRefresh, verificaAcesso }
 }
 
 export type Tokens = ReturnType<typeof criaTokens>

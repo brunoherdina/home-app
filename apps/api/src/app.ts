@@ -4,6 +4,7 @@ import { withUserPlugin } from './plugins/withUser.js'
 import { semIdentidadePlugin } from './plugins/semIdentidade.js'
 import { rotaSaude } from './routes/saude.js'
 import { rotasAuth } from './routes/auth.js'
+import { rotasCasa } from './routes/casas.js'
 import { ErroHttp, PayloadInvalidoError } from './erros.js'
 import type { Erro } from '@casa/contracts'
 
@@ -49,6 +50,7 @@ export async function criaApp() {
   await app.register(semIdentidadePlugin)
   await app.register(rotaSaude, { prefix: '/api' })
   await app.register(rotasAuth, { prefix: '/api' })
+  await app.register(rotasCasa, { prefix: '/api' })
 
   return app
 }
