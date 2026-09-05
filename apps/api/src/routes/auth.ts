@@ -8,7 +8,7 @@ import {
   registroSchema,
 } from '@casa/contracts'
 import { config } from '../config.js'
-import { ErroHttp, PayloadInvalidoError } from '../erros.js'
+import { ErroHttp, PayloadInvalidoError, SessaoInvalidaError } from '../erros.js'
 import { criaServicoDeAuth } from '../auth/servico.js'
 import { criaTokens } from '../auth/tokens.js'
 
@@ -18,7 +18,7 @@ const tokens = criaTokens({
   ttlRefreshDias: config.REFRESH_TTL_DIAS,
 })
 
-const auth = criaServicoDeAuth(tokens)
+const auth = criaServicoDeAuth(tokens, { gracaSegundos: config.REFRESH_GRACA_SEGUNDOS })
 
 /** ADR-0009: o mesmo schema que valida o formulário no app valida o payload aqui. */
 function valida<T extends z.ZodType>(schema: T, corpo: unknown): z.infer<T> {
@@ -80,6 +80,12 @@ export const rotasAuth: FastifyPluginAsync = async (app) => {
   app.post('/auth/refresh', async (request, reply) => {
     const dados = valida(refreshSchema, request.body)
     const par = await request.semIdentidade((db) => auth.renova(db, dados.refreshToken))
+
+    // O 401 nasce FORA da transação de propósito: a recusa por reuso revoga a
+    // família, e lançar lá dentro faria o `semIdentidade` dar ROLLBACK na
+    // própria revogação. A transação fecha em COMMIT e só então isto recusa.
+    if (!par) throw new SessaoInvalidaError()
+
     return reply.send(parDeTokensSchema.parse(par))
   })
 }

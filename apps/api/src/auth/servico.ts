@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { Login, ParDeTokens, Registro } from '@casa/contracts'
 import type { CasaDb } from '../plugins/withUser.js'
 import { moradores, sessoes } from '../db/schema.js'
@@ -11,7 +11,21 @@ import type { Tokens } from './tokens.js'
  * O domínio de auth. Recebe o `db` da transação (`semIdentidade`) em vez de
  * importar o pool: é o que mantém a rota fora do pool cru e o serviço testável.
  */
-export function criaServicoDeAuth(tokens: Tokens) {
+export type OpcoesDeAuth = {
+  /**
+   * Tolerância para reuso de refresh recém-consumido (ADR-0008).
+   *
+   * Parâmetro e não constante porque é o eixo do trade-off desta story: janela
+   * curta demais desloga quem tem rede ruim, longa demais dá ao ladrão um
+   * intervalo em que o roubo passa por concorrência. Sendo argumento, o teste
+   * consegue exercitar os dois lados sem relógio falso.
+   */
+  gracaSegundos: number
+}
+
+export function criaServicoDeAuth(tokens: Tokens, opcoes: OpcoesDeAuth) {
+  const gracaMs = opcoes.gracaSegundos * 1000
+
   /**
    * Abre uma família de sessões e devolve o primeiro par (ADR-0008).
    *
@@ -115,15 +129,41 @@ export function criaServicoDeAuth(tokens: Tokens) {
   /**
    * `POST /api/auth/refresh` — rotação simples.
    *
-   * Story 4 entrega a rotação; **detecção de reuso e janela de graça são a
-   * story 5**. Hoje um refresh já consumido é recusado direto, o que é seguro
-   * porém rude: dois requests paralelos do app com o mesmo refresh derrubam a
-   * sessão. É exatamente esse buraco que a janela de graça fecha — o
-   * single-flight do cliente (`lib/api/nucleo.ts`) reduz a chance, mas não é
-   * garantia, e servidor não terceiriza invariante para cliente.
+   * Três desfechos para um refresh JÁ consumido, e a diferença entre eles é o
+   * tempo desde o consumo (ADR-0008):
+   *
+   *   * dentro da graça, com sucessor usável → devolve o MESMO sucessor. É o
+   *     caso benigno: dois requests do app dispararam com o mesmo refresh, e
+   *     derrubar a sessão por isso seria punir a pessoa pela concorrência do
+   *     próprio cliente. O single-flight de `lib/api/nucleo.ts` reduz a chance
+   *     mas não é garantia — e servidor não terceiriza invariante para cliente.
+   *   * fora da graça → é sinal de vazamento: o token legítimo já rodou faz
+   *     tempo, então quem chega agora com ele tem uma cópia. Revoga a FAMÍLIA
+   *     inteira e força login. Revogar só esta linha não adiantaria: o ladrão
+   *     que rotacionou primeiro seguiria com o sucessor dele.
+   *   * dentro da graça, sem sucessor usável → 401 sem revogar nada. A cadeia
+   *     já andou além do sucessor; não dá para distinguir retentativa lenta de
+   *     ataque, e a janela de graça é justamente a zona em que o servidor se
+   *     recusa a decidir. Não premia (nada de token novo) nem pune (família
+   *     intacta).
+   *
+   * Devolve `null` na recusa em vez de lançar, e isso é a correção de um bug
+   * real: a revogação da família é um UPDATE dentro da MESMA transação do
+   * `semIdentidade`, e uma exceção faz o plugin dar `ROLLBACK`. Lançando daqui,
+   * o servidor detectava o vazamento, respondia 401 e desfazia a revogação —
+   * o token roubado seguia valendo, e nem o teste de integração via, porque
+   * lia a família antes do rollback. Recusar sem lançar deixa a transação
+   * fechar em COMMIT; quem transforma `null` em 401 é a rota.
    */
-  async function renova(db: CasaDb, refreshToken: string): Promise<ParDeTokens> {
-    const cracha = await tokens.verificaRefresh(refreshToken)
+  async function renova(db: CasaDb, refreshToken: string): Promise<ParDeTokens | null> {
+    let cracha
+    try {
+      cracha = await tokens.verificaRefresh(refreshToken)
+    } catch {
+      // Assinatura, prazo ou `tipo` errados: nada foi escrito, e a recusa segue
+      // o mesmo caminho das outras para a rota não ter dois contratos.
+      return null
+    }
 
     // FOR UPDATE serializa duas rotações concorrentes do MESMO refresh: sem o
     // lock, as duas leem `consumida_em` nulo e ambas rotacionam, e a família
@@ -136,6 +176,7 @@ export function criaServicoDeAuth(tokens: Tokens) {
         consumidaEm: sessoes.consumidaEm,
         revogadaEm: sessoes.revogadaEm,
         expiraEm: sessoes.expiraEm,
+        substituidaPor: sessoes.substituidaPor,
       })
       .from(sessoes)
       .where(and(eq(sessoes.jti, cracha.jti), eq(sessoes.moradorId, cracha.moradorId)))
@@ -143,12 +184,22 @@ export function criaServicoDeAuth(tokens: Tokens) {
       .for('update')
 
     const agora = new Date()
-    if (!sessao) throw new SessaoInvalidaError()
-    if (sessao.revogadaEm !== null) throw new SessaoInvalidaError()
-    if (sessao.expiraEm <= agora) throw new SessaoInvalidaError()
-    // TODO(story 5): aqui entram a detecção de reuso (revogar a família) e a
-    // janela de graça (~30 s devolvendo o par sucessor por `substituida_por`).
-    if (sessao.consumidaEm !== null) throw new SessaoInvalidaError()
+    if (!sessao) return null
+    if (sessao.revogadaEm !== null) return null
+    if (sessao.expiraEm <= agora) return null
+
+    if (sessao.consumidaEm !== null) {
+      const desdeOConsumo = agora.getTime() - sessao.consumidaEm.getTime()
+
+      if (desdeOConsumo > gracaMs) {
+        await revogaFamilia(db, sessao.familiaId, agora)
+        return null
+      }
+
+      return sessao.substituidaPor
+        ? await devolveSucessor(db, sessao.substituidaPor, agora)
+        : null
+    }
 
     const sucessor = await tokens.assinaRefresh(sessao.moradorId)
 
@@ -170,6 +221,70 @@ export function criaServicoDeAuth(tokens: Tokens) {
     return {
       accessToken: acesso.token,
       refreshToken: sucessor.token,
+      expiraEmSegundos: acesso.expiraEmSegundos,
+    }
+  }
+
+  /**
+   * Mata a família inteira numa query só — é para isso que `familia_id` existe
+   * em vez de uma cadeia caminhada elo a elo.
+   *
+   * Os access tokens já emitidos NÃO vão para `revoked_tokens`: o servidor não
+   * sabe quais `jti` estão em circulação, e eles morrem sozinhos em ~15 min. A
+   * blocklist do ADR-0003 serve ao logout, onde o `jti` chega no request.
+   * Encurtar essa janela é o próprio motivo de o access ser curto.
+   */
+  async function revogaFamilia(db: CasaDb, familiaId: string, agora: Date): Promise<void> {
+    await db
+      .update(sessoes)
+      .set({ revogadaEm: agora })
+      .where(and(eq(sessoes.familiaId, familiaId), isNull(sessoes.revogadaEm)))
+  }
+
+  /**
+   * Reemite o par do sucessor para o request que chegou dentro da janela de
+   * graça. Devolve `null` quando o sucessor não serve mais — quem decide o que
+   * fazer com isso é `renova`.
+   *
+   * Sem `FOR UPDATE` aqui de propósito: a linha antiga já está travada, e é por
+   * ela que passa qualquer outra rotação desta cadeia. Travar a segunda abriria
+   * espaço para dois locks em ordens diferentes, que é como nasce deadlock.
+   */
+  async function devolveSucessor(
+    db: CasaDb,
+    jtiSucessor: string,
+    agora: Date,
+  ): Promise<ParDeTokens | null> {
+    const [sucessor] = await db
+      .select({
+        jti: sessoes.jti,
+        moradorId: sessoes.moradorId,
+        expiraEm: sessoes.expiraEm,
+        consumidaEm: sessoes.consumidaEm,
+        revogadaEm: sessoes.revogadaEm,
+      })
+      .from(sessoes)
+      .where(eq(sessoes.jti, jtiSucessor))
+      .limit(1)
+
+    if (!sucessor) return null
+    if (sucessor.revogadaEm !== null) return null
+    if (sucessor.expiraEm <= agora) return null
+    // Sucessor já gasto: a cadeia andou mais de um passo. Devolvê-lo seria
+    // entregar um token morto, e devolver o sucessor DELE seria transformar a
+    // graça numa escada que qualquer réplica sobe.
+    if (sucessor.consumidaEm !== null) return null
+
+    const refresh = await tokens.assinaRefreshDe(
+      sucessor.moradorId,
+      sucessor.jti,
+      sucessor.expiraEm,
+    )
+    const acesso = await tokens.assinaAcesso(sucessor.moradorId)
+
+    return {
+      accessToken: acesso.token,
+      refreshToken: refresh.token,
       expiraEmSegundos: acesso.expiraEmSegundos,
     }
   }

@@ -33,6 +33,13 @@ const envSchema = z.object({
   ACCESS_TTL_SEGUNDOS: z.coerce.number().int().positive().default(900),
   /** Vida do refresh token (ADR-0008): 30–90 d. */
   REFRESH_TTL_DIAS: z.coerce.number().int().positive().default(60),
+  /**
+   * Janela de graça da rotação (ADR-0008): por quantos segundos depois do
+   * consumo um refresh reusado ainda é tratado como concorrência do app, e não
+   * como vazamento. Curta demais desloga quem tem rede ruim; longa demais dá ao
+   * ladrão um intervalo em que o roubo passa por corrida legítima.
+   */
+  REFRESH_GRACA_SEGUNDOS: z.coerce.number().int().nonnegative().default(30),
   PORT: z.coerce.number().int().positive().default(3333),
   /**
    * 0.0.0.0 e não 127.0.0.1: no WSL2 o device físico alcança a API pela rede,

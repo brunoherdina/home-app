@@ -65,6 +65,28 @@ export function criaTokens(cfg: ConfigDeTokens) {
   async function assinaRefresh(moradorId: string): Promise<RefreshAssinado> {
     const jti = randomUUID()
     const expiraEm = new Date(Date.now() + cfg.ttlRefreshDias * 24 * 60 * 60 * 1000)
+    return assinaRefreshDe(moradorId, jti, expiraEm)
+  }
+
+  /**
+   * Reassina um refresh que JÁ existe em `sessoes`, com o mesmo `jti` e o mesmo
+   * prazo.
+   *
+   * Existe por causa da janela de graça (ADR-0008): quando dois requests
+   * paralelos chegam com o mesmo refresh, o segundo precisa receber o sucessor
+   * que o primeiro emitiu — e o servidor não guarda o token, só a linha. Como
+   * `jti` e `expira_em` estão gravados, a assinatura é reprodutível.
+   *
+   * O JWT sai diferente byte a byte do original (o `iat` é outro), e isso não
+   * importa: o que identifica a sessão é o `jti`, e os dois strings apontam
+   * para a mesma linha. Guardar o token em vez de reassiná-lo seria manter
+   * credencial em claro no banco pelo prazo inteiro do refresh.
+   */
+  async function assinaRefreshDe(
+    moradorId: string,
+    jti: string,
+    expiraEm: Date,
+  ): Promise<RefreshAssinado> {
     const token = await new SignJWT({ tipo: TIPO_REFRESH })
       .setProtectedHeader({ alg: ALG })
       .setSubject(moradorId)
@@ -103,7 +125,7 @@ export function criaTokens(cfg: ConfigDeTokens) {
     return { moradorId: payload.sub, jti: payload.jti }
   }
 
-  return { assinaAcesso, assinaRefresh, verificaRefresh }
+  return { assinaAcesso, assinaRefresh, assinaRefreshDe, verificaRefresh }
 }
 
 export type Tokens = ReturnType<typeof criaTokens>
