@@ -41,3 +41,31 @@ export const textos = {
 } as const
 
 export type Cor = keyof typeof cores
+
+/**
+ * Paleta que o morador escolhe para si na Fase 0.
+ *
+ * São os tokens da marca reusados, e não uma paleta nova: `moradores.cor`
+ * guarda o NOME do token (contracts/morador.ts), então inventar cores aqui
+ * seria inventar identidade visual antes do `tokens.json` chegar do Figma —
+ * exatamente o que o aviso deste arquivo manda não fazer. Quando a paleta real
+ * aterrissar, esta lista cresce e `corSchema` vira `z.enum` com os mesmos nomes.
+ *
+ * Quatro opções é escolha de produto, não limitação: a Fase 0 tem orçamento de
+ * um minuto, e grade de cor com vinte quadrados é onde esse minuto vaza.
+ */
+export const coresDeMorador = ['moss', 'amber', 'coral', 'lime'] as const
+
+export type CorDeMorador = (typeof coresDeMorador)[number]
+
+/**
+ * Raios de canto. Mesma origem provisória das cores — existem para a tela não
+ * espalhar `borderRadius: 12` literal, que é como valor mágico vira dívida.
+ */
+export const raios = {
+  sm: 8,
+  md: 12,
+  lg: 20,
+  /** Pílula: chip de cor, chip de tipo de casa. */
+  pilula: 999,
+} as const

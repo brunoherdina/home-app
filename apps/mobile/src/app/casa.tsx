@@ -1,0 +1,130 @@
+import { useQuery } from '@tanstack/react-query'
+import type { MoradorPublico, Tarefa } from '@casa/contracts'
+import { Redirect } from 'expo-router'
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { SemConexao } from '../componentes/SemConexao'
+import { Aviso } from '../design-system/componentes/Aviso'
+import { cores, espacos, raios, textos, type Cor } from '../design-system/tokens'
+import { buscaCasa, chaveDaCasa } from '../lib/api/casa'
+import { ErroDaApi } from '../lib/api/cliente'
+
+/**
+ * A casa povoada — o fim do critério de aceite do Épico 1: "cai numa casa já
+ * povoada em menos de um minuto".
+ *
+ * É leitura pura nesta versão. Concluir tarefa, atribuir e os três modos são o
+ * Épico 2; a nota no rodapé existe para a lista não parecer quebrada por não
+ * responder ao toque.
+ *
+ * O que esta tela NÃO mostra é tão deliberado quanto o que mostra: nenhuma
+ * tarefa tem dono, nenhum morador tem contador, e a lista de moradores não é
+ * ordenada por nada que se pareça com desempenho (manifesto §2 — sem pódio,
+ * sem ranking). A ordem vem do servidor, que a devolve por data de entrada.
+ */
+export default function Casa() {
+  const casaQuery = useQuery({ queryKey: chaveDaCasa, queryFn: buscaCasa })
+
+  if (casaQuery.isPending) {
+    return (
+      <View style={estilos.centro}>
+        <ActivityIndicator color={cores.moss} />
+      </View>
+    )
+  }
+
+  if (casaQuery.isError) {
+    if (casaQuery.error instanceof ErroDaApi && casaQuery.error.status === 401) {
+      return <Redirect href="/entrar" />
+    }
+    return (
+      <SemConexao aoTentarDeNovo={() => void casaQuery.refetch()} ocupado={casaQuery.isFetching} />
+    )
+  }
+
+  // A casa sumiu entre o boot e aqui (conta sem casa, cache limpo). Devolve ao
+  // ramo do criador em vez de desenhar uma casa vazia que não existe.
+  if (!casaQuery.data) return <Redirect href="/nova-casa" />
+
+  const { casa, moradores, tarefas } = casaQuery.data
+
+  return (
+    <ScrollView contentContainerStyle={estilos.conteudo}>
+      <Text style={estilos.titulo}>{casa.nome}</Text>
+
+      <View style={estilos.secao}>
+        <Text style={estilos.rotulo}>Quem mora aqui</Text>
+        <View style={estilos.moradores}>
+          {moradores.map((morador) => (
+            <ChipDeMorador key={morador.id} morador={morador} />
+          ))}
+        </View>
+      </View>
+
+      <View style={estilos.secao}>
+        <Text style={estilos.rotulo}>Tarefas da casa</Text>
+        {tarefas.length === 0 ? (
+          <Aviso tom="nota" mensagem="Nenhuma tarefa por aqui ainda." />
+        ) : (
+          <View style={estilos.lista}>
+            {tarefas.map((tarefa: Tarefa) => (
+              <View key={tarefa.id} style={estilos.tarefa}>
+                <Text style={estilos.tituloDaTarefa}>{tarefa.titulo}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
+      <Text style={estilos.nota}>
+        Dividir e concluir tarefas chega na próxima etapa. Por enquanto, a casa já está de pé.
+      </Text>
+    </ScrollView>
+  )
+}
+
+/**
+ * Apelido e cor, e nada além disso — é o `moradorPublicoSchema` desenhado.
+ *
+ * A cor chega como NOME de token (contracts/morador.ts). Um token
+ * desconhecido — cor gravada antes de a paleta encolher, por exemplo — cai no
+ * cinza em vez de derrubar a tela: leitura não deve morrer por dado legado.
+ */
+function ChipDeMorador({ morador }: { morador: MoradorPublico }) {
+  const cor = cores[morador.cor as Cor] ?? cores.cinza
+  return (
+    <View style={estilos.morador}>
+      <View style={[estilos.bolinha, { backgroundColor: cor }]} />
+      <Text style={estilos.apelido}>{morador.apelido}</Text>
+    </View>
+  )
+}
+
+const estilos = StyleSheet.create({
+  centro: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: cores.papel },
+  conteudo: { padding: espacos.lg, gap: espacos.xl, backgroundColor: cores.papel, flexGrow: 1 },
+  titulo: { ...textos.titulo, color: cores.moss },
+  secao: { gap: espacos.sm },
+  rotulo: { ...textos.legenda, color: cores.cinza, textTransform: 'uppercase' },
+  moradores: { flexDirection: 'row', flexWrap: 'wrap', gap: espacos.sm },
+  morador: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: espacos.sm,
+    paddingVertical: espacos.sm,
+    paddingHorizontal: espacos.md,
+    borderRadius: raios.pilula,
+    borderWidth: 1,
+    borderColor: cores.cinza,
+  },
+  bolinha: { width: 14, height: 14, borderRadius: raios.pilula },
+  apelido: { ...textos.corpo, color: cores.tinta },
+  lista: { gap: espacos.sm },
+  tarefa: {
+    padding: espacos.md,
+    borderRadius: raios.md,
+    borderWidth: 1,
+    borderColor: cores.cinza,
+  },
+  tituloDaTarefa: { ...textos.corpo, color: cores.tinta },
+  nota: { ...textos.legenda, color: cores.cinza, marginTop: 'auto' },
+})

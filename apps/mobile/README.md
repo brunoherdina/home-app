@@ -5,13 +5,20 @@ Expo Router + TypeScript. Estrutura em `src/`:
 | Pasta | Papel |
 |---|---|
 | `src/app/` | rotas por arquivo (Expo Router) |
-| `src/design-system/` | tokens — **único lugar do app onde `#hex` é permitido** |
+| `src/design-system/` | tokens e primitivas visuais — **único lugar do app onde `#hex` é permitido** |
+| `src/componentes/` | composições do app; é onde o React Hook Form encosta no design system |
 | `src/lib/api/` | client HTTP tipado — **único lugar que faz `fetch`** |
-| `src/features/` | telas e lógica por domínio (tarefas, objetivos, pulso…) |
+| `src/lib/sessao/` | access em memória + refresh no secure store (ADR-0008) |
+| `src/features/` | telas e lógica por domínio (tarefas, objetivos, pulso…) — a partir do Épico 2 |
 
-As duas regras acima não são estilo: são guardas de camada, cobradas por
+As duas regras em negrito não são estilo: são guardas de camada, cobradas por
 `npm run guards` na raiz. Componente com `fetch` direto não dá pra cachear,
 mockar nem trocar de transporte — e se quebra por acidente, num autoimport.
+
+Há mais duas fronteiras, essas só por convenção: o design system não conhece
+React Hook Form, e `lib/api/nucleo.ts` não conhece Expo. Existem pelo mesmo
+motivo — trocar a biblioteca de formulário ou rodar o interceptor em teste Node
+não deveria custar reescrita.
 
 ## Rodar
 
@@ -21,9 +28,26 @@ npm run dev -w @casa/api # na raiz — API em :3333
 npm start -w @casa/mobile
 ```
 
-A tela inicial do 0a é andaime: mostra o estado do banco e o role da conexão.
-Se aparecer role diferente de `casa_app`, o ADR-0002 foi violado. A primeira
-tela de produto é o criador da Fase 0 (Épico 1).
+## O fluxo da Fase 0 (Épico 1)
+
+`src/app/index.tsx` é o boot: fica **atrás do splash** e decide o destino antes
+de ele sair.
+
+| Estado | Destino |
+|---|---|
+| sem sessão | `/entrar` |
+| sessão viva, sem casa | `/nova-casa` (ramo do criador) |
+| sessão viva, com casa | `/casa` |
+| servidor inalcançável | tela de "sem conexão" — **nunca** a de entrar |
+
+A última linha é a que costuma sair errada: rede fora não é credencial negada.
+O refresh continua no cofre e a pessoa volta direto para a casa quando o sinal
+voltar (ADR-0008).
+
+Fora do escopo desta fase, de propósito: entrar por convite (Épico 2 — precisa
+de URL pública), login com Google (sem client id), sair da conta (revogar exige
+a rota autenticada de logout) e concluir tarefa (Épico 2). A lista da casa é
+leitura pura.
 
 ## Device físico no WSL2
 

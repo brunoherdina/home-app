@@ -73,8 +73,8 @@ async function montaCenario(opcoes: {
     return opcoes.respondeRecurso(accessToken, contadores.recurso)
   }
 
-  const requisita = criaRequisita({ baseUrl: BASE, sessao, fetchFn: fetchFalso })
-  return { requisita, sessao, cofre, contadores, expirouVezes: () => expirou }
+  const { requisita, restauraSessao } = criaRequisita({ baseUrl: BASE, sessao, fetchFn: fetchFalso })
+  return { requisita, restauraSessao, sessao, cofre, contadores, expirouVezes: () => expirou }
 }
 
 const valida = (dado: unknown) => dado as { ok: boolean }
@@ -315,5 +315,150 @@ describe('interceptor de sessão do cliente', () => {
     // 3 originais (401) + 3 repetições (200).
     expect(cenario.contadores.recurso).toBe(6)
     expect(cenario.expirouVezes()).toBe(0)
+  })
+})
+
+/**
+ * Boot a frio: o access só vive em memória (ADR-0008), então todo início de app
+ * começa com `leAccessToken() === null` e um refresh — ou nada — no cofre.
+ *
+ * O que estes testes protegem é a decisão de rota do splash. `restauraSessao`
+ * tem três saídas e cada uma manda a pessoa para um lugar diferente: `true`
+ * segue para a casa, `false` vai para a tela de entrar, e a exceção fica em
+ * "sem conexão". Colapsar as duas últimas é o bug clássico — abrir o app no
+ * metrô mandaria fazer login de novo, exatamente o que o ADR-0008 evita.
+ */
+function montaBoot(opcoes: {
+  refreshGuardado?: string | null
+  respondeRefresh?: (chamada: number) => Response | Promise<Response>
+  respondeRecurso?: (accessToken: string | null, chamada: number) => Response | Promise<Response>
+}) {
+  const cofre = criaArmazenamentoFalso(opcoes.refreshGuardado ?? null)
+  const sessao = criaSessao(cofre)
+
+  let expirou = 0
+  sessao.aoExpirar(() => {
+    expirou += 1
+  })
+
+  const contadores = { refresh: 0, recurso: 0 }
+
+  const fetchFalso: typeof fetch = async (entrada, init) => {
+    const url = String(entrada)
+    if (url === `${BASE}/api/auth/refresh`) {
+      contadores.refresh += 1
+      if (!opcoes.respondeRefresh) throw new Error('refresh inesperado neste cenário')
+      return opcoes.respondeRefresh(contadores.refresh)
+    }
+    contadores.recurso += 1
+    if (!opcoes.respondeRecurso) throw new Error('request de recurso inesperada neste cenário')
+    const auth = new Headers(init?.headers).get('authorization')
+    const accessToken = auth?.startsWith('Bearer ') ? auth.slice('Bearer '.length) : null
+    return opcoes.respondeRecurso(accessToken, contadores.recurso)
+  }
+
+  const cliente = criaRequisita({ baseUrl: BASE, sessao, fetchFn: fetchFalso })
+  return { ...cliente, sessao, cofre, contadores, expirouVezes: () => expirou }
+}
+
+describe('restauração da sessão no boot', () => {
+  it('troca o refresh do cofre por um par novo sem provocar 401 em rota nenhuma', async () => {
+    const boot = montaBoot({
+      refreshGuardado: 'refresh-antigo',
+      respondeRefresh: () => respostaJson(200, PAR_NOVO),
+    })
+
+    // Ponto de partida do app frio: nada em memória.
+    expect(boot.sessao.leAccessToken()).toBeNull()
+
+    await expect(boot.restauraSessao()).resolves.toBe(true)
+
+    expect(boot.sessao.leAccessToken()).toBe('access-novo')
+    // Rotação (ADR-0008): o refresh usado no boot também é gasto.
+    expect(boot.cofre.token).toBe('refresh-novo')
+    // O motivo de `restauraSessao` existir: nenhuma request de recurso foi
+    // disparada só para colher o 401 que já se sabia que viria.
+    expect(boot.contadores.recurso).toBe(0)
+    expect(boot.expirouVezes()).toBe(0)
+  })
+
+  it('cofre vazio (primeira instalação) resolve false sem falar com o servidor', async () => {
+    const boot = montaBoot({ refreshGuardado: null })
+
+    await expect(boot.restauraSessao()).resolves.toBe(false)
+
+    expect(boot.contadores.refresh).toBe(0)
+    expect(boot.sessao.leAccessToken()).toBeNull()
+    // NÃO emite "a sessão expirou": não havia sessão. Quem ouve o evento limpa
+    // o cache e navega — e a limpeza faria a restauração rodar de novo, em
+    // laço, no boot mais comum que existe (primeira abertura do app).
+    expect(boot.expirouVezes()).toBe(0)
+  })
+
+  it('refresh negado pelo servidor resolve false e limpa o cofre', async () => {
+    const boot = montaBoot({
+      refreshGuardado: 'refresh-revogado',
+      respondeRefresh: () =>
+        respostaJson(401, { codigo: 'SESSAO_INVALIDA', mensagem: 'expirou' }),
+    })
+
+    await expect(boot.restauraSessao()).resolves.toBe(false)
+
+    // Só o servidor pode declarar a credencial morta — e declarou.
+    expect(boot.cofre.token).toBeNull()
+    expect(boot.expirouVezes()).toBe(1)
+  })
+
+  it('rede fora no boot LANÇA e preserva o refresh — sem conexão não é logout', async () => {
+    const boot = montaBoot({
+      refreshGuardado: 'refresh-antigo',
+      respondeRefresh: () => {
+        throw new TypeError('Network request failed')
+      },
+    })
+
+    await expect(boot.restauraSessao()).rejects.toMatchObject({
+      status: 0,
+      codigo: 'SEM_CONEXAO',
+    })
+
+    // A regra central do módulo: o cofre sobrevive ao que não foi negação.
+    expect(boot.cofre.token).toBe('refresh-antigo')
+    expect(boot.expirouVezes()).toBe(0)
+  })
+
+  it('restauração e um 401 concorrente compartilham o MESMO refresh', async () => {
+    // A request de recurso sai antes de a restauração responder — é a corrida
+    // real do boot, em que a primeira tela dispara sua query cedo demais.
+    let liberaRefresh!: () => void
+    const podeResponder = new Promise<void>((resolve) => {
+      liberaRefresh = resolve
+    })
+
+    const boot = montaBoot({
+      refreshGuardado: 'refresh-antigo',
+      respondeRefresh: async () => {
+        await podeResponder
+        return respostaJson(200, PAR_NOVO)
+      },
+      respondeRecurso: (accessToken) =>
+        accessToken === 'access-novo'
+          ? respostaJson(200, { ok: true })
+          : respostaJson(401, { codigo: 'TOKEN_VENCIDO', mensagem: 'expirou' }),
+    })
+
+    const restauracao = boot.restauraSessao()
+    const recurso = boot.requisita('/api/recurso', { valida })
+
+    // Deixa a request de recurso tomar o 401 antes de o refresh responder.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    liberaRefresh()
+
+    await expect(restauracao).resolves.toBe(true)
+    await expect(recurso).resolves.toEqual({ ok: true })
+
+    // Dois refreshes com o mesmo token seriam lidos como reuso e revogariam a
+    // família (ADR-0008) — o app se deslogaria sozinho ao abrir.
+    expect(boot.contadores.refresh).toBe(1)
   })
 })

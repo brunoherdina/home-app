@@ -56,7 +56,29 @@ export type Requisita = <T>(
   opcoes: RequestInit & { valida: (dado: unknown) => T },
 ) => Promise<T>
 
-export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucleo): Requisita {
+export type Cliente = {
+  requisita: Requisita
+  /**
+   * Troca o refresh guardado no cofre por um par novo — a reidratação da
+   * sessão no boot (ADR-0008: o access só vive em memória, então todo início a
+   * frio começa sem nenhum).
+   *
+   * `true` = a sessão vive; `false` = o servidor NEGOU o refresh (ou não havia
+   * nenhum) e o cofre já foi limpo; **lança** quando a renovação apenas não
+   * pôde acontecer agora. Os três estados são os três destinos do boot: casa,
+   * tela de entrar, e "sem conexão — tente de novo" — que não é login.
+   *
+   * Existe além do interceptor porque o interceptor reage a um 401, e no boot
+   * esse 401 seria PROVOCADO: a primeira request sairia sem `Authorization`
+   * só para tomar a recusa que já se sabe que vem. Restaurar antes troca três
+   * idas ao servidor por duas e dá ao splash um único `await` para segurar.
+   * Compartilha o single-flight com o interceptor — restauração e um 401
+   * concorrente não geram dois refreshes com o mesmo token.
+   */
+  restauraSessao: () => Promise<boolean>
+}
+
+export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucleo): Cliente {
   let refreshEmVoo: Promise<boolean> | null = null
 
   /** Toda request sai com o access da memória — se houver um (ADR-0008). */
@@ -114,8 +136,14 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
     }
 
     if (!refreshToken) {
-      // Sem refresh guardado não há o que renovar — a sessão, se existia, acabou.
-      await sessao.expira()
+      // Sem refresh guardado não há o que renovar. `encerra` e não `expira`: o
+      // evento de expiração é um AVISO de que a sessão morreu sem a pessoa
+      // pedir, e aqui não havia sessão para morrer — é o estado normal de quem
+      // abre o app pela primeira vez. Emitindo, o boot vira laço: quem escuta o
+      // evento limpa o cache e navega para a tela de entrar, a limpeza faz a
+      // restauração rodar de novo, e ela emite de novo. Quem tinha uma request
+      // em voo não perde o sinal: o `false` vira `SESSAO_EXPIRADA` logo abaixo.
+      await sessao.encerra()
       return false
     }
 
@@ -150,7 +178,7 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
     return true
   }
 
-  return async function requisita<T>(
+  async function requisita<T>(
     caminho: string,
     opcoes: RequestInit & { valida: (dado: unknown) => T },
   ): Promise<T> {
@@ -189,4 +217,6 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
     // (ADR-0009). Contrato quebrado aparece aqui, não três telas adiante.
     return valida(corpo)
   }
+
+  return { requisita, restauraSessao: renovaSessao }
 }
