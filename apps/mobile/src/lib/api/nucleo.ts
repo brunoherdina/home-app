@@ -5,8 +5,8 @@
  * (vitest) sem mock pesado de Expo: baseUrl, fetch e sessão chegam injetados.
  * cliente.ts é o fio fino que liga isto ao runtime do app.
  */
+import { parDeTokensSchema } from '@casa/contracts'
 import type { SessaoDoCliente } from '../sessao/sessao'
-import { validaRespostaRefresh } from './contratos-auth'
 
 export class ErroDaApi extends Error {
   constructor(
@@ -146,7 +146,7 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
     // reapresentar o refresh consumido dispararia a detecção de reuso.
     // Corpo fora do contrato também não é negação: o erro sobe (como em
     // `valida` no fim de `requisita`) sem levar o cofre junto.
-    await sessao.guardaTokens(validaRespostaRefresh(await resposta.json()))
+    await sessao.guardaTokens(parDeTokensSchema.parse(await resposta.json()))
     return true
   }
 

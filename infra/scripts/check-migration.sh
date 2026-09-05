@@ -77,9 +77,19 @@ estrutura() { # asserções que valem depois de todo up
     "$(como_owner -c "select has_column_privilege('casa_auth','moradores','hash_senha','SELECT')")"
   afirma "casa_auth NÃO lê apelido" "f" \
     "$(como_owner -c "select has_column_privilege('casa_auth','moradores','apelido','SELECT')")"
-  # Sem INSERT de propósito: criar morador é o register (leva 2), que concede lá.
-  afirma "ninguém insere em moradores ainda" "f" \
-    "$(como_owner -c "select has_table_privilege('casa_app','moradores','INSERT') or has_table_privilege('casa_auth','moradores','INSERT')")"
+  # ── 0002: o register (story 4) concede INSERT ao casa_auth, por coluna.
+  afirma "casa_auth insere email em moradores" "t" \
+    "$(como_owner -c "select has_column_privilege('casa_auth','moradores','email','INSERT')")"
+  # A assimetria que o grant de coluna torna possível: escrever a primeira
+  # versão do próprio perfil sem poder ler o perfil dos outros.
+  afirma "casa_auth escreve apelido mas não o lê" "t" \
+    "$(como_owner -c "select has_column_privilege('casa_auth','moradores','apelido','INSERT') and not has_column_privilege('casa_auth','moradores','apelido','SELECT')")"
+  # casa_id fora do grant: entrar numa casa é a story 6, e um bug em /api/auth
+  # não consegue enfiar ninguém numa casa alheia se o privilégio não existe.
+  afirma "casa_auth NÃO insere casa_id" "f" \
+    "$(como_owner -c "select has_column_privilege('casa_auth','moradores','casa_id','INSERT')")"
+  afirma "casa_app não insere em moradores" "f" \
+    "$(como_owner -c "select has_table_privilege('casa_app','moradores','INSERT') or has_any_column_privilege('casa_app','moradores','INSERT')")"
 
   # ── casa_atual() (ADR-0012)
   afirma "casa_atual() existe" "1" \
