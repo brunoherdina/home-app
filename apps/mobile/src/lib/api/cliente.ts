@@ -1,4 +1,6 @@
 import Constants from 'expo-constants'
+import { sessao } from '../sessao'
+import { criaRequisita } from './nucleo'
 
 /**
  * Único ponto de saída HTTP do app.
@@ -13,40 +15,12 @@ const baseUrl =
   // host que serviu o bundle do Metro — que é a máquina de desenvolvimento.
   `http://${Constants.expoConfig?.hostUri?.split(':')[0] ?? 'localhost'}:3333`
 
-export class ErroDaApi extends Error {
-  constructor(
-    readonly status: number,
-    readonly codigo: string,
-    mensagem: string,
-  ) {
-    super(mensagem)
-  }
-}
+/**
+ * Cliente com o interceptor de sessão: 401 → refresh single-flight → repete a
+ * request uma vez (ADR-0008). A lógica mora em nucleo.ts, injetável e testada
+ * em Node; aqui só se liga o baseUrl do runtime Expo e a sessão real.
+ */
+export const requisita = criaRequisita({ baseUrl, sessao })
 
-export async function requisita<T>(
-  caminho: string,
-  opcoes: RequestInit & { valida: (dado: unknown) => T },
-): Promise<T> {
-  const { valida, ...init } = opcoes
-  const resposta = await fetch(`${baseUrl}${caminho}`, {
-    ...init,
-    headers: { 'content-type': 'application/json', ...init.headers },
-  })
-
-  const corpo: unknown = await resposta.json().catch(() => null)
-
-  if (!resposta.ok) {
-    const erro = corpo as { codigo?: string; mensagem?: string } | null
-    throw new ErroDaApi(
-      resposta.status,
-      erro?.codigo ?? 'ERRO_DESCONHECIDO',
-      erro?.mensagem ?? 'A API respondeu com erro.',
-    )
-  }
-
-  // Valida a resposta com o mesmo schema zod que a API usou para produzi-la
-  // (ADR-0009). Contrato quebrado aparece aqui, não três telas adiante.
-  return valida(corpo)
-}
-
+export { ErroDaApi } from './nucleo'
 export { baseUrl }
