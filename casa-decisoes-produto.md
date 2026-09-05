@@ -34,6 +34,8 @@ Skills `casa-*` referenciam este arquivo; se um ADR mudar, as skills afetadas mu
 | [0009](#adr-0009--formulários-com-react-hook-form-e-zod) | Formulários com React Hook Form + zod | ✅ Aceito |
 | [0010](#adr-0010--rodízio-com-bônus-de-pontos-para-tarefa-detestada) | Rodízio + bônus de pontos para tarefa detestada | ✅ Aceito |
 | [0011](#adr-0011--pulso-semanal-só-de-humor) | Pulso semanal só de humor | ✅ Aceito |
+| [0012](#adr-0012--identidade-é-o-morador-escopo-de-casa-por-função-sql) | Identidade é o morador; escopo de casa por função SQL | ✅ Aceito |
+| [0013](#adr-0013--role-casa_auth-para-as-rotas-sem-identidade) | Role `casa_auth` para as rotas sem identidade | ✅ Aceito |
 
 ---
 
@@ -425,6 +427,89 @@ A razão é de privacidade, não de escopo:
   piso mínimo de respostas. Numa casa que não atinge o piso, a pergunta simplesmente não é feita.
   Isso vale pro pulso e pros incômodos.
 - O schema do Épico 1 nasce sem coluna de sobrecarga por pessoa.
+
+
+---
+
+## ADR-0012 — Identidade é o morador; escopo de casa por função SQL
+
+**Data:** 2026-08-29 · **Status:** ✅ Aceito · **Depende de:** [ADR-0002](#adr-0002--rls-continua-sendo-a-camada-de-enforcement)
+
+### Contexto
+
+O Épico 1 não consegue escrever a primeira migration sem responder: **uma pessoa pode pertencer a mais
+de uma casa?** A resposta define o que `app.current_user_id` significa e como *toda* policy do projeto
+escopa. Decidir isso depois custa remigrar identidade em cada tabela.
+
+### Decisão
+
+**Uma casa por conta no v1.** `moradores` acumula credencial e pertencimento; a identidade injetada por
+requisição é `morador.id`. Toda tabela escopada carrega `casa_id` **desde já**, e o predicado nunca é
+escrito à mão duas vezes — sai de uma função:
+
+```sql
+create function casa_atual() returns uuid
+  language sql stable security definer set search_path = public, pg_temp as $$
+    select casa_id from moradores
+     where id = nullif(current_setting('app.current_user_id', true), '')::uuid
+  $$;
+
+revoke execute on function casa_atual() from public;
+grant execute on function casa_atual() to casa_app;
+
+-- toda policy escopada por casa:
+create policy "mesma_casa" on tarefas for select
+  using (casa_id = casa_atual());
+```
+
+> [!warning] Por que `security definer` aqui, e por que isso não é um bypass
+> A policy de `moradores` precisa deixar um morador **ver os outros da mesma casa** — é o "vê quem já
+> entrou" da Fase 0. Se essa policy chamasse uma função `security invoker` que lê `moradores`, o
+> Postgres entra em **recursão infinita**. `security definer` quebra o ciclo. O raio é estreito de
+> propósito: a função lê **uma linha**, pela identidade já injetada, `search_path` fixo, `EXECUTE`
+> revogado de `PUBLIC`. Ela não recebe parâmetro — não há o que injetar nela.
+
+### Consequências
+
+- **O caminho de volta é contido.** Se um dia `usuarios` e `moradores` se separarem, muda a função e a
+  tabela — não as N policies que já estiverem escritas. É o que torna esta escolha reversível.
+- **Uma pessoa que queira uma segunda casa precisa de outro e-mail.** Aceitável no beta de duas
+  pessoas; **revisar antes de abrir para fora** — república e casa da família são o caso óbvio.
+- `check-roles.sh` ganha uma asserção: `casa_atual()` não pode ser `EXECUTE` para `PUBLIC`.
+- Toda policy escopada usa `casa_atual()`. Predicado de casa escrito inline em migration é desvio a
+  ser pego em revisão.
+
+---
+
+## ADR-0013 — Role `casa_auth` para as rotas sem identidade
+
+**Data:** 2026-08-29 · **Status:** ✅ Aceito · **Depende de:** [ADR-0002](#adr-0002--rls-continua-sendo-a-camada-de-enforcement) · **Emenda o** [ADR-0003](#adr-0003--auth-jwt-próprio-herdado-do-improvisa-ai)
+
+### Contexto
+
+`register`, `login` e `refresh` acontecem **antes** de existir identidade, e o plugin `withUser` exige
+uma. Sem um caminho explícito, o atalho no primeiro dia do Épico 1 é o handler pegar o pool cru — que é
+exatamente o furo que o ADR-0002 existe para impedir, e que `npm run guards` reprova.
+
+### Decisão
+
+Um **segundo role**, `casa_auth`, com **pool próprio** e credencial própria (`AUTH_DATABASE_URL`):
+
+- `NOBYPASSRLS`, não é dono de nada, sem `CREATE` no schema — as mesmas restrições de `casa_app`.
+- `GRANT` mínimo: as colunas de credencial de `moradores`, mais `sessoes` e `revoked_tokens`. Nada de
+  tarefas, objetivos ou dado sensível.
+- Plugin `semIdentidade(fn)` abre a transação com `SET LOCAL ROLE casa_auth`. A guarda de camada passa
+  a exigir que **todo** handler use `withUser` **ou** `semIdentidade`.
+
+Pool separado, e não `GRANT casa_auth TO casa_app`: se `casa_app` pudesse virar `casa_auth` por
+`SET ROLE`, qualquer handler poderia escalar sozinho e o limite viraria convenção.
+
+### Consequências
+
+- Um segredo a mais no ambiente, e `afirmaContratoDeRls()` passa a rodar para os dois pools no boot.
+- O raio de dano de um bug em `/api/auth` fica restrito a três tabelas.
+- `check-roles.sh` ganha as mesmas asserções do `casa_app` aplicadas a `casa_auth`, mais uma: `casa_auth`
+  **não** tem `SELECT` em tabela de dado sensível.
 
 
 ---

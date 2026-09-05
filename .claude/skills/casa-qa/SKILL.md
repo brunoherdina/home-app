@@ -24,7 +24,7 @@ Persona: advogado de qualidade. Testes provam a **intenção** (a regra de negó
 Baratas de escrever, impedem erosão silenciosa — o tipo de defeito que **nenhum teste funcional pega**:
 
 1. **App**: nenhum componente faz `fetch` direto; tudo por `lib/api/`.
-2. **API**: nenhum handler toca o pool cru; tudo pelo plugin `withUser` (ADR-0002). Sem esta, um handler fura a RLS e a suíte fica verde.
+2. **API**: nenhum handler toca o pool cru; tudo por `withUser` ou, nas rotas públicas de auth, por `semIdentidade` (ADR-0002, ADR-0013). Sem esta, um handler fura a RLS e a suíte fica verde.
 3. **Cor literal**: `#hex`/`rgba()` fora do design system reprova.
 
 As três são executáveis: `npm run guards` (fonte em `scripts/guards/`). Falham
@@ -35,6 +35,9 @@ com `exit 1`, então servem de passo de CI no Épico 0b.
 - **Negação por identidade**: para cada tabela sensível, abrir transação como `casa_app` com o `app.current_user_id` de **outro** membro e afirmar zero linhas atribuíveis. Roda contra o Postgres do compose — mock de RLS não prova nada. Piso pronto em `npm run check:rls`; `npm run check:roles` cobre o catálogo.
 - **Migration up → down → up**: o drizzle-kit não gera `down` (ADR-0005); este teste é o que torna a reversibilidade cobrável. Automatizado em `npm run check:migration`.
 - **Idempotência de job**: rodar o job do worker duas vezes e afirmar efeito único.
+- **Rotação de refresh** (ADR-0008), dois testes que se contradizem se um deles for mal escrito:
+  reuso fora da janela de graça revoga a família; **dois requests paralelos com o mesmo refresh dentro
+  da janela mantêm a sessão**. O segundo é o que impede o app de deslogar sozinho em rede ruim.
 
 ## Cobertura mínima
 
