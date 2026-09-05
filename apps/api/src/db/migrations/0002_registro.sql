@@ -1,0 +1,23 @@
+-- Épico 1, story 4 — `casa_auth` passa a criar moradores.
+--
+-- Migration sem DDL: nada muda no schema, só o GRANT. É o desenho do ADR-0002
+-- levado a sério — cada fluxo novo traz o privilégio mínimo que ele exige, na
+-- migration que o acompanha, em vez de um ALTER DEFAULT PRIVILEGES concedendo
+-- de antemão o que ninguém pediu.
+--
+-- INSERT por COLUNA, e não na tabela:
+--
+--   * `casa_id` fora — entrar numa casa é o fluxo criar-casa (story 6), que
+--     concede junto com a regra. Um bug em /api/auth não consegue enfiar
+--     ninguém numa casa alheia porque o privilégio não existe.
+--   * `google_sub`/`apple_sub` fora — login social é ADR-0003/Épico 6.
+--   * `email_verificado_em` fora — o `verify-email` depende do transporte de
+--     e-mail (Épico 0b). Sem rota que resgate o token, o UPDATE não tem dono.
+--   * `id` fora — o default `gen_random_uuid()` é quem preenche. Sem o grant,
+--     nem por acidente o auth escolhe o uuid de um morador.
+--
+-- Note a assimetria deliberada: `casa_auth` INSERE apelido e cor (vêm no
+-- payload do registro, tela única da Fase 0) mas continua sem SELECT neles —
+-- escrever a primeira versão do próprio perfil não é o mesmo que poder ler o
+-- perfil dos outros. Quem lê convivência é `casa_app`, sob a policy da casa.
+GRANT INSERT ("apelido", "cor", "email", "hash_senha") ON "moradores" TO casa_auth;

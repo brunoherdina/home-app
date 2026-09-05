@@ -15,7 +15,7 @@ import { afirmaContratoDeRls, pool } from '../src/db/pool.js'
 const jobs: Array<{ nome: string; cron: string; executa: () => Promise<void> }> = []
 
 async function main() {
-  await afirmaContratoDeRls()
+  await afirmaContratoDeRls(pool, 'casa_app')
 
   if (jobs.length === 0) {
     console.log('worker: nenhum job registrado (esperado até o Épico 3)')

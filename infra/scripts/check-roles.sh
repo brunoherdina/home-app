@@ -79,6 +79,26 @@ fora_da_lista="$(exec_sql "select coalesce(string_agg(c.relname, ', '), '')
         or has_any_column_privilege('casa_auth', c.oid, 'SELECT'))")"
 afirma "casa_auth sem SELECT fora de moradores/sessoes/revoked_tokens" "" "$fora_da_lista"
 
+# A story 4 deu INSERT em moradores ao casa_auth, então a lista fechada de
+# LEITURA deixou de cobrir sozinha o raio dele: um GRANT de escrita numa quarta
+# tabela passaria despercebido. As mesmas três tabelas, agora para escrita.
+#
+# DELETE aparece só no teste de tabela: não existe privilégio DELETE por
+# coluna, e passá-lo para has_any_column_privilege é erro de execução, não
+# resposta falsa — o script morreria em vez de reprovar.
+escrita_fora_da_lista="$(exec_sql "select coalesce(string_agg(c.relname, ', '), '')
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+ where n.nspname = 'public'
+   and c.relkind = 'r'
+   and c.relname not in ('moradores', 'sessoes', 'revoked_tokens')
+   and (has_table_privilege('casa_auth', c.oid, 'INSERT')
+        or has_table_privilege('casa_auth', c.oid, 'UPDATE')
+        or has_table_privilege('casa_auth', c.oid, 'DELETE')
+        or has_any_column_privilege('casa_auth', c.oid, 'INSERT')
+        or has_any_column_privilege('casa_auth', c.oid, 'UPDATE'))")"
+afirma "casa_auth sem escrita fora de moradores/sessoes/revoked_tokens" "" "$escrita_fora_da_lista"
+
 # casa_atual() é SECURITY DEFINER: EXECUTE para PUBLIC seria dar o predicado de
 # escopo a qualquer role logado (ADR-0012). A asserção é genérica de propósito:
 # função criada SEM o revoke explícito nasce com EXECUTE para PUBLIC (proacl

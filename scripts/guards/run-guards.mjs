@@ -45,12 +45,15 @@ const guardas = [
     dica: 'mova a chamada para apps/mobile/src/lib/api/ e importe a função de domínio',
   },
   {
-    nome: 'api: nenhuma rota toca o pool cru (tudo por withUser)',
+    nome: 'api: nenhuma rota toca o pool cru (tudo por withUser ou semIdentidade)',
     dir: join(RAIZ, 'apps/api/src/routes'),
     extensoes: ['.ts'],
     isento: () => false,
-    padrao: /from\s+['"][^'"]*db\/pool(\.js)?['"]|\bpool\.(query|connect)\b/,
-    dica: 'use request.withUser(async (db) => ...) — ADR-0002',
+    // `pool\w*` e não `pool`: o ADR-0013 trouxe um segundo pool (`poolAuth`), e
+    // uma rota de auth pegando ELE cru fura o mesmo contrato — com o agravante
+    // de que o role dele alcança credencial e sessão.
+    padrao: /from\s+['"][^'"]*db\/pool(\.js)?['"]|\bpool\w*\.(query|connect)\b/,
+    dica: 'use request.withUser(...) ou, em rota sem identidade, request.semIdentidade(...) — ADR-0002 e ADR-0013',
   },
   {
     nome: 'ui: nenhuma cor literal fora do design system',
