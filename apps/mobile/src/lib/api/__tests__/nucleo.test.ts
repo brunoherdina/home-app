@@ -28,6 +28,18 @@ function respostaJson(status: number, corpo: unknown): Response {
 }
 
 /**
+ * Par que a API devolve de verdade em `/api/auth/refresh` — os três campos de
+ * `parDeTokensSchema`, `expiraEmSegundos` inclusive. O núcleo valida a resposta
+ * com o schema compartilhado (ADR-0009), então um fixture com dois campos
+ * passaria no teste e quebraria contra a API real.
+ */
+const PAR_NOVO = {
+  accessToken: 'access-novo',
+  refreshToken: 'refresh-novo',
+  expiraEmSegundos: 900,
+}
+
+/**
  * Palco padrão dos cenários: sessão viva com access já vencido no servidor.
  * `respondeRefresh` e `respondeRecurso` parametrizam cada teste; os contadores
  * são o que prova a intenção (uma chamada de refresh, um retry só).
@@ -71,7 +83,7 @@ describe('interceptor de sessão do cliente', () => {
   it('401 → refresh → repete a request UMA vez com o access rotacionado', async () => {
     const cenario = await montaCenario({
       respondeRefresh: () =>
-        respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+        respostaJson(200, PAR_NOVO),
       respondeRecurso: (accessToken) =>
         accessToken === 'access-novo'
           ? respostaJson(200, { ok: true })
@@ -113,7 +125,7 @@ describe('interceptor de sessão do cliente', () => {
   it('segundo 401 mesmo após refresh derruba a sessão em vez de entrar em loop', async () => {
     const cenario = await montaCenario({
       respondeRefresh: () =>
-        respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+        respostaJson(200, PAR_NOVO),
       // O recurso nega sempre: o problema não é expiração de token.
       respondeRecurso: () => respostaJson(401, { codigo: 'SEM_ACESSO', mensagem: 'negado' }),
     })
@@ -139,7 +151,7 @@ describe('interceptor de sessão do cliente', () => {
         respondeRefresh: (chamada) =>
           chamada === 1
             ? respostaJson(503, {})
-            : respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+            : respostaJson(200, PAR_NOVO),
         respondeRecurso: (accessToken) =>
           accessToken === 'access-novo'
             ? respostaJson(200, { ok: true })
@@ -205,7 +217,7 @@ describe('interceptor de sessão do cliente', () => {
     const cenario = await montaCenario({
       cofre,
       respondeRefresh: () =>
-        respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+        respostaJson(200, PAR_NOVO),
       respondeRecurso: (accessToken) =>
         accessToken === 'access-novo'
           ? respostaJson(200, { ok: true })
@@ -245,7 +257,7 @@ describe('interceptor de sessão do cliente', () => {
     async (caminho) => {
       const cenario = await montaCenario({
         respondeRefresh: () =>
-          respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+          respostaJson(200, PAR_NOVO),
         respondeRecurso: () =>
           respostaJson(401, {
             codigo: 'CREDENCIAL_INVALIDA',
@@ -280,7 +292,7 @@ describe('interceptor de sessão do cliente', () => {
     const cenario = await montaCenario({
       respondeRefresh: async () => {
         await todasTomaram401
-        return respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' })
+        return respostaJson(200, PAR_NOVO)
       },
       respondeRecurso: (accessToken) => {
         if (accessToken === 'access-novo') return respostaJson(200, { ok: true })
