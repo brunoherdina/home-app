@@ -8,7 +8,8 @@
     "scheme": "casa",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.brunoherdina.casa"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +18,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.brunoherdina.casa"
     },
     "web": {
       "output": "static",
@@ -45,6 +47,13 @@
     "updates": {
       "enabled": false,
       "fallbackToCacheTimeout": 0
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b28da4c0-877b-4b2d-819a-c40a68714593"
+      }
+    },
+    "owner": "brunoherdina"
   }
 }

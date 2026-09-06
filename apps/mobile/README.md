@@ -44,10 +44,18 @@ A última linha é a que costuma sair errada: rede fora não é credencial negad
 O refresh continua no cofre e a pessoa volta direto para a casa quando o sinal
 voltar (ADR-0008).
 
+Sair da conta fica no fim da tela da casa. Revoga a **família** do refresh no
+servidor (`POST /api/auth/logout`, sob RLS — migration 0004) e apaga o cofre
+local. As duas metades são independentes de propósito: sem rede, a limpeza
+local acontece do mesmo jeito e a revogação fica para trás — quem pediu para
+sair sai, e ficar preso numa conta por falta de sinal seria pior. O access
+token que já estava em memória continua tecnicamente válido até vencer
+(~15 min): a blocklist de `jti` do ADR-0003 ainda não é lida por ninguém, e
+escrever numa lista que ninguém consulta seria decoração.
+
 Fora do escopo desta fase, de propósito: entrar por convite (Épico 2 — precisa
-de URL pública), login com Google (sem client id), sair da conta (revogar exige
-a rota autenticada de logout) e concluir tarefa (Épico 2). A lista da casa é
-leitura pura.
+de URL pública), login com Google (sem client id) e concluir tarefa (Épico 2).
+A lista da casa é leitura pura.
 
 ## Device físico no WSL2
 
@@ -82,6 +90,44 @@ EXPO_PUBLIC_API_URL=https://<sua-url> npm start -w @casa/mobile
 Sem `EXPO_PUBLIC_API_URL`, o client usa o host que serviu o bundle na porta 3333
 — o que funciona no caminho 1 e não funciona no 2.
 
+## APK de teste (EAS)
+
+O projeto no EAS é `@brunoherdina/casa`. O perfil `preview` gera **APK**
+(`android.buildType`), e não o AAB padrão — AAB só instala pela Play Store, e o
+ponto aqui é mandar o arquivo pelo WhatsApp.
+
+```bash
+npx eas-cli build --platform android --profile preview
+```
+
+Duas coisas ficam **congeladas no APK** no momento do build, e as duas moram no
+`eas.json`:
+
+* `EXPO_PUBLIC_API_URL` — o app compilado não tem Metro para adivinhar o host,
+  então o endereço da API entra fixo. Hoje é o IP da máquina na LAN. **Se o IP
+  mudar, o APK para de funcionar** e precisa de build novo; vale fixar o IP no
+  roteador.
+* o canal de updates (`preview`) — irrelevante até o Épico 6, que é quando OTA
+  liga.
+
+> [!warning] O APK de preview aceita HTTP em claro
+> Android 9+ bloqueia cleartext, e build de release não herda a exceção do modo
+> debug — sem ela o app instala, abre e falha em toda request com erro de rede
+> genérico. `app.config.ts` liga `usesCleartextTraffic` para todo perfil
+> **menos** `production`. Quando existir build de produção, a API estará atrás
+> de TLS (ADR-0001) e a permissão não deve ir junto: cleartext em produção
+> transforma qualquer Wi-Fi hostil em leitura de token.
+
+`app.config.ts` existe só para isso: o Expo lê `app.json` primeiro e passa o
+resultado para a função, que acrescenta o que depende do perfil de build.
+
+> [!note] `eas` travando em ETIMEDOUT nesta máquina
+> O IPv6 sai pela WSL2 e não volta; o `curl` desiste rápido e o Node não. Os
+> comandos do EAS precisam de:
+> ```bash
+> export NODE_OPTIONS="--dns-result-order=ipv4first --no-network-family-autoselection"
+> ```
+
 ## OTA (ADR-0007)
 
 `expo-updates` está instalado e o `eas.json` já tem os canais
@@ -89,8 +135,10 @@ Sem `EXPO_PUBLIC_API_URL`, o client usa o host que serviu o bundle na porta 3333
 Épico 6** — por isso `updates.enabled: false` no `app.json`.
 
 O módulo é nativo: adicionar depois custaria rebuild e nova submissão às lojas,
-exatamente quando já houvesse gente instalada. Falta rodar `eas init` (precisa
-de conta Expo) para o `updates.url` receber o id do projeto.
+exatamente quando já houvesse gente instalada. O `eas init` já rodou — o
+`projectId` está em `app.json` — mas `updates.url` continua ausente porque
+`updates.enabled` é `false`: o campo entra junto com o primeiro `eas update`
+publicado, no Épico 6.
 
 > [!warning] OTA entrega só JavaScript
 > Trocar módulo nativo, versão de SDK ou permissão continua exigindo build e
