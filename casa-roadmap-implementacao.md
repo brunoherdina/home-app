@@ -142,7 +142,15 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
   adicionar; **convite** (WhatsApp / QR / código curto, "sem labirinto") **e o ramo *tem convite* da
   Fase 0** — abrir o convite, ver a casa e quem já entrou, escolher apelido + cor e entrar (herdado do
   Épico 1 em 2026-08-29: aceitar convite exige URL pública, que só existe depois do 0b).
-- **Pré-requisito de infra:** o convite exige URL pública → **o Épico 0b precisa estar fechado aqui**.
+- **Pré-requisito de infra:** o convite por **link/QR** exige URL pública → **o Épico 0b precisa estar
+  fechado aqui**.
+
+> [!note] Convite por código curto antecipado (2026-09-06)
+> A fatia **código curto digitado à mão** foi entregue junto do Épico 1, fora de ordem e de propósito:
+> ela é a única parte do convite que **não** depende de URL pública nem de deep link, e sem ela o app
+> testável do Épico 1 só serve para uma pessoa — duas contas caem em duas casas diferentes.
+> Entregue: `POST /api/convites`, `POST /api/casas/entrar`, `entra_na_casa()` (migration 0005) e o
+> ramo *tem convite* da Fase 0. **Continua no Épico 2:** link, QR, e cancelar convite.
 - **DoD:** dois moradores na casa; atribuir/concluir; pontos acumulam; convite entrega a pessoa dentro
   da casa vendo quem já entrou; **os pontos-bônus não aparecem em nenhuma comparação entre moradores**
   — sem tela, sem endpoint, sem query que ordene pessoas por pontos (ADR-0010).

@@ -59,11 +59,19 @@ SESSAO_BRU='ffffffff-ffff-4fff-8fff-000000000002'
 # A casa que a Dora cria via cria_casa() — id é sorteado pela função, então a
 # limpeza acha pelo nome.
 CASA_DORA='Casa Smoke da Dora'
+# Duas contas SEM casa para o convite: a Dora já ganha uma em cria_casa(), na
+# asserção 13, e reusá-la aqui testaria "já tem casa", não "entra por convite".
+ERICA='55555555-5555-5555-5555-555555555555'
+FABIO='66666666-6666-6666-6666-666666666666'
+# Só símbolos do alfabeto de convite (contracts/convite.ts) — código com 'O' ou
+# 'I' aqui ensinaria o formato errado para quem copiar daqui.
+CODIGO='SMKE12'
 
 limpa() {
   como_owner "drop table if exists smoke_rls" >/dev/null 2>&1 || true
   # moradores antes de casas (FK); tarefas saem por cascade da casa.
-  como_admin "delete from moradores where id in ('$ANA','$BRU','$CARLA','$DORA');
+  # convites saem por cascade da casa e de quem os criou.
+  como_admin "delete from moradores where id in ('$ANA','$BRU','$CARLA','$DORA','$ERICA','$FABIO');
               delete from casas where id in ('$CASA_A','$CASA_B') or nome = '$CASA_DORA'" >/dev/null 2>&1 || true
 }
 trap limpa EXIT
@@ -123,7 +131,7 @@ echo "ADR-0012 — negação entre casas (moradores e casas reais)"
 # Seed como superusuário: FORCE RLS barra o INSERT até do owner, e é assim que
 # deve ser — nenhuma policy de escrita se aplica a casa_owner.
 como_admin "
-  delete from moradores where id in ('$ANA','$BRU','$CARLA','$DORA');
+  delete from moradores where id in ('$ANA','$BRU','$CARLA','$DORA','$ERICA','$FABIO');
   delete from casas where id in ('$CASA_A','$CASA_B');
   insert into casas (id, nome, tipo) values
     ('$CASA_A', 'Casa A', 'casal'),
@@ -134,7 +142,9 @@ como_admin "
     ('$ANA',   '$CASA_A', 'Ana',   'moss',  'ana.smoke@example.com'),
     ('$CARLA', '$CASA_A', 'Carla', 'amber', 'carla.smoke@example.com'),
     ('$BRU',   '$CASA_B', 'Bruno', 'coral', 'bruno.smoke@example.com'),
-    ('$DORA',  null,      'Dora',  'lime',  'dora.smoke@example.com');
+    ('$DORA',  null,      'Dora',  'lime',  'dora.smoke@example.com'),
+    ('$ERICA', null,      'Erica', 'moss',  'erica.smoke@example.com'),
+    ('$FABIO', null,      'Fabio', 'amber', 'fabio.smoke@example.com');
   insert into tarefas (id, casa_id, titulo) values
     ('$TAREFA_A', '$CASA_A', 'Louça da casa A'),
     ('$TAREFA_B', '$CASA_B', 'Louça da casa B');
@@ -233,6 +243,51 @@ contem "e recusa a segunda casa da mesma conta" "morador já tem casa" \
   "$(como_app "begin; set local role casa_app; set local app.current_user_id = '$DORA'; select cria_casa('outra', 'casal'); commit;")"
 contem "sem identidade, cria_casa() não cria nada" "sem identidade" \
   "$(como_app "select cria_casa('anonima', 'casal')")"
+
+# ─── Convite por código — a SEGUNDA porta para entrar numa casa (migration 0005).
+echo
+echo "convite — o código é a única porta, e ele é de uso único"
+
+# 14. Convidar é escrita de quem mora na casa, PARA a própria casa. As duas
+# metades do WITH CHECK aparecem nas duas asserções seguintes.
+como_app "begin; set local app.current_user_id = '$ANA';
+          insert into convites (codigo, casa_id, criado_por, expira_em)
+          values ('$CODIGO', casa_atual(), '$ANA', now() + interval '1 day'); commit;" >/dev/null
+afirma "Ana convida para a própria casa" "1" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; select count(*) from convites; commit;" | tr -d '[:space:]')"
+contem "Bruno não emite convite para a casa da Ana" "violates row-level security policy" \
+  "$(como_app "begin; set local app.current_user_id = '$BRU';
+               insert into convites (codigo, casa_id, criado_por, expira_em)
+               values ('XXXX99', '$CASA_A', '$BRU', now() + interval '1 day'); commit;")"
+
+# 15. O convite não é legível de fora da casa — nem procurando pelo código
+# exato. É o que impede o aceite de virar adivinhação com resposta imediata:
+# quem tenta um código só descobre se acertou passando pela função.
+afirma "Bruno não vê o convite da casa A" "0" \
+  "$(como_app "begin; set local app.current_user_id = '$BRU'; select count(*) from convites where codigo = '$CODIGO'; commit;" | tr -d '[:space:]')"
+afirma "Erica (sem casa) também não vê convite nenhum" "0" \
+  "$(como_app "begin; set local app.current_user_id = '$ERICA'; select count(*) from convites; commit;" | tr -d '[:space:]')"
+
+# 16. Consumir convite é a função, não um UPDATE. Sem o privilégio, nem quem é
+# da casa marca (ou desmarca) um convite como usado por fora dela.
+contem "casa_app não consome convite por fora da função" "permission denied" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; update convites set usado_em = now(); commit;")"
+
+# 17. O caminho feliz e o uso único, em sequência.
+afirma "Erica entra na casa A pelo código e passa a ver os 3 moradores" "3" \
+  "$(como_app "begin; set local role casa_app; set local app.current_user_id = '$ERICA';
+               select entra_na_casa('$CODIGO'); select count(*) from moradores; commit;" | tail -1 | tr -d '[:space:]')"
+contem "e o mesmo código não serve para o Fabio" "convite inválido" \
+  "$(como_app "begin; set local role casa_app; set local app.current_user_id = '$FABIO'; select entra_na_casa('$CODIGO'); commit;")"
+afirma "Fabio continua sem casa" "0" \
+  "$(como_app "begin; set local app.current_user_id = '$FABIO'; select count(*) from casas; commit;" | tr -d '[:space:]')"
+
+# 18. Código inexistente e código já usado dão a MESMA recusa — separar os dois
+# diria a quem adivinha que acertou o sorteio e chegou tarde.
+contem "código que nunca existiu recebe a mesma recusa" "convite inválido" \
+  "$(como_app "begin; set local role casa_app; set local app.current_user_id = '$FABIO'; select entra_na_casa('ZZZZZZ'); commit;")"
+contem "sem identidade, entra_na_casa() não vincula ninguém" "sem identidade" \
+  "$(como_app "select entra_na_casa('$CODIGO')")"
 
 if ((falhas > 0)); then
   echo; echo "$falhas asserção(ões) falharam — a RLS está decorativa."

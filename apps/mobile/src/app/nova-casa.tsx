@@ -32,12 +32,17 @@ const OPCOES_DE_TIPO: readonly Opcao<TipoDeCasa>[] = TIPOS.map((tipo) => ({
 }))
 
 /**
- * Segundo e último passo do ramo do criador.
+ * Segundo e último passo do ramo do criador — e a bifurcação da Fase 0.
  *
  * Não há botão de voltar (ver o `_layout`): a conta já existe e voltar cairia
  * no cadastro, que só responderia 409. Também não há "pular": uma conta sem
  * casa não tem nenhuma tela para onde ir — é o estado que o boot resolve
  * mandando exatamente para cá.
+ *
+ * O boot manda TODA conta sem casa para cá, inclusive quem foi convidado — não
+ * há como o servidor saber que existe um código no WhatsApp de alguém. Por isso
+ * o segundo botão do rodapé: criar casa é o caminho padrão porque é o que uma
+ * pessoa sozinha faz, e o convite fica ao lado, não escondido.
  */
 export default function NovaCasa() {
   const cache = useQueryClient()
@@ -67,7 +72,14 @@ export default function NovaCasa() {
       titulo="Sua casa"
       legenda="Ela já vai nascer com algumas tarefas — dá para mudar tudo depois."
       rodape={
-        <Botao titulo="Criar casa" aoTocar={() => void enviar()} ocupado={criacao.isPending} />
+        <>
+          <Botao titulo="Criar casa" aoTocar={() => void enviar()} ocupado={criacao.isPending} />
+          <Botao
+            titulo="Tenho um código de convite"
+            variante="texto"
+            aoTocar={() => router.push('/entrar-na-casa')}
+          />
+        </>
       }
     >
       {criacao.isError ? <Aviso mensagem={mensagemDoErro(criacao.error)} /> : null}

@@ -159,6 +159,53 @@ export const tarefas = pgTable(
   (tabela) => [index('tarefas_casa_id_idx').on(tabela.casaId)],
 )
 
+/**
+ * Convites por código curto — o ramo *tem convite* da Fase 0.
+ *
+ * O código é a PK: não há uuid além dele, porque não existe nada que aponte
+ * para um convite. Uma coluna de id seria identificador sem referência, e o
+ * código já é único por construção (32^6 e uso único).
+ *
+ * Uso único e não contador de vagas: convite é para UMA pessoa, e "quantas
+ * vezes ainda dá para usar" é estado que só faz sentido quando a casa tiver
+ * papéis — o que não é o v1 (ADR-0012). Reenviar é gerar outro.
+ *
+ * Sem `usado_por` e sem `revogado_em`: nenhum fluxo lê os dois. Cancelar
+ * convite e "quem entrou por qual código" chegam junto com a tela que os
+ * mostra — coluna sem fluxo envelhece errado, a mesma regra que manteve
+ * frustração e aspiração fora do schema.
+ */
+export const convites = pgTable(
+  'convites',
+  {
+    /** Normalizado pelo contrato (maiúsculo, sem separador) antes de chegar. */
+    codigo: text('codigo').primaryKey(),
+    /** Cascade: casa apagada não deixa convite que abriria porta para o nada. */
+    casaId: uuid('casa_id')
+      .notNull()
+      .references(() => casas.id, { onDelete: 'cascade' }),
+    /**
+     * Quem convidou. Cascade pelo mesmo motivo do `casa_id`: conta apagada
+     * (LGPD, Épico 6) não deixa convite vivo emitido por ninguém.
+     */
+    criadoPor: uuid('criado_por')
+      .notNull()
+      .references(() => moradores.id, { onDelete: 'cascade' }),
+    /**
+     * Validade curta é metade da proteção do código (a outra é o rate limit
+     * do aceite): reduz a janela em que um código vazado — print, conversa
+     * arquivada — ainda abre a casa.
+     */
+    expiraEm: timestamp('expira_em', { withTimezone: true }).notNull(),
+    /** Timestamp e não boolean: "quando" responde suporte, "se" não. */
+    usadoEm: timestamp('usado_em', { withTimezone: true }),
+    criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+  },
+  // Toda leitura por casa_app é escopada por casa (`casa_atual()`); a busca
+  // pelo código é PK e não precisa de índice.
+  (tabela) => [index('convites_casa_id_idx').on(tabela.casaId)],
+)
+
 export type Casa = typeof casas.$inferSelect
 export type NovaCasa = typeof casas.$inferInsert
 export type Morador = typeof moradores.$inferSelect
@@ -169,3 +216,5 @@ export type RevokedToken = typeof revokedTokens.$inferSelect
 export type NovoRevokedToken = typeof revokedTokens.$inferInsert
 export type Tarefa = typeof tarefas.$inferSelect
 export type NovaTarefa = typeof tarefas.$inferInsert
+export type Convite = typeof convites.$inferSelect
+export type NovoConvite = typeof convites.$inferInsert

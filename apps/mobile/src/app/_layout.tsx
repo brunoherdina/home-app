@@ -69,6 +69,10 @@ export default function RootLayout() {
         {/* Sem voltar: a conta já existe, e voltar cairia num formulário de
             cadastro que só daria 409. A casa é o próximo passo obrigatório. */}
         <Stack.Screen name="nova-casa" options={{ headerShown: false, gestureEnabled: false }} />
+        {/* COM voltar, ao contrário da de cima: quem chegou aqui escolheu o
+            ramo do convite e pode ter escolhido errado — voltar cai em
+            nova-casa, que é um destino legítimo. */}
+        <Stack.Screen name="entrar-na-casa" options={{ title: 'Entrar numa casa' }} />
         <Stack.Screen name="casa" options={{ headerShown: false, gestureEnabled: false }} />
       </Stack>
     </QueryClientProvider>

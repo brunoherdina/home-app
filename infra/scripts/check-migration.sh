@@ -50,7 +50,7 @@ aplica_down() {
 estrutura() { # asserções que valem depois de todo up
   # ── 0000 + 0001: toda tabela nasce com RLS, FORCE e dono casa_owner.
   local tabela
-  for tabela in moradores casas sessoes revoked_tokens; do
+  for tabela in moradores casas sessoes revoked_tokens convites; do
     afirma "tabela $tabela existe" "1" \
       "$(como_owner -c "select count(*) from pg_tables where schemaname='public' and tablename='$tabela'")"
     afirma "$tabela com RLS habilitada" "t" \
@@ -137,6 +137,36 @@ estrutura() { # asserções que valem depois de todo up
     "$(como_owner -c "select has_table_privilege('casa_app','tarefas','UPDATE') or has_table_privilege('casa_app','tarefas','DELETE')")"
   afirma "casa_auth não alcança tarefas" "f" \
     "$(como_owner -c "select has_table_privilege('casa_auth','tarefas','SELECT')")"
+
+  # ── 0005: convites. Duas policies para casa_app (ler os da casa, criar para a
+  # própria casa) e duas para casa_owner — estas últimas existem só porque o
+  # FORCE RLS sujeita o definer de entra_na_casa() às policies da tabela.
+  afirma "quatro policies em convites" "4" \
+    "$(como_owner -c "select count(*) from pg_policies where tablename='convites'")"
+  afirma "casa_app lê e cria convites" "t" \
+    "$(como_owner -c "select has_table_privilege('casa_app','convites','SELECT') and has_table_privilege('casa_app','convites','INSERT')")"
+  # A ausência é o ponto: sem UPDATE, marcar (ou desmarcar) um convite como
+  # usado só acontece dentro de entra_na_casa().
+  afirma "casa_app não consome nem apaga convite direto" "f" \
+    "$(como_owner -c "select has_table_privilege('casa_app','convites','UPDATE') or has_table_privilege('casa_app','convites','DELETE')")"
+  afirma "casa_auth não alcança convites" "f" \
+    "$(como_owner -c "select has_table_privilege('casa_auth','convites','SELECT')")"
+
+  # ── entra_na_casa(): a SEGUNDA porta para um morador passar a ter casa, com
+  # as mesmas defesas de cria_casa() — e o mesmo privilégio ausente no casa_app.
+  afirma "entra_na_casa() existe" "1" \
+    "$(como_owner -c "select count(*) from pg_proc where proname='entra_na_casa'")"
+  afirma "entra_na_casa() é security definer" "t" \
+    "$(como_owner -c "select prosecdef from pg_proc where proname='entra_na_casa'")"
+  afirma "entra_na_casa() com search_path fixo" "t" \
+    "$(como_owner -c "select coalesce(array_to_string(proconfig, ',') like '%search_path=public, pg_temp%', false) from pg_proc where proname='entra_na_casa'")"
+  afirma "entra_na_casa() não é executável por PUBLIC" "f" \
+    "$(como_owner -c "select has_function_privilege('public','entra_na_casa(text)','EXECUTE')")"
+  afirma "casa_app executa entra_na_casa()" "t" \
+    "$(como_owner -c "select has_function_privilege('casa_app','entra_na_casa(text)','EXECUTE')")"
+  # O lock que faz o convite ser de uso único quando duas pessoas chegam juntas.
+  afirma "entra_na_casa() trava o convite antes de consumir" "t" \
+    "$(como_owner -c "select prosrc like '%FROM convites%FOR UPDATE%' from pg_proc where proname='entra_na_casa'")"
 
   # ── sessoes e revoked_tokens: assunto do casa_auth (ADR-0013).
   # Três policies: a do casa_auth (0001) e as duas do logout (0004).

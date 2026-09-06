@@ -4,6 +4,7 @@
 export * from './auth'
 export * from './casa'
 export * from './comum'
+export * from './convite'
 export * from './morador'
 export * from './saude'
 export * from './tarefa'

@@ -65,18 +65,31 @@ export async function criaCasa(db: CasaDb, dados: CriarCasa): Promise<Casa> {
 }
 
 /**
- * A casa de quem está pedindo, com moradores e tarefas. `null` quando a pessoa
- * ainda não tem casa — é o estado normal entre o registro e a Fase 0, não erro.
+ * A casa da identidade da transação, ou `null` se ela ainda não tem uma.
  *
- * Nenhuma das três consultas filtra por casa: quem filtra é a RLS (ADR-0002).
- * Um `where casa_id = ...` aqui esconderia o dia em que a policy parasse de
- * negar — o teste passaria pelo motivo errado.
+ * Sem `where`: a RLS é que escopa (ADR-0002), e por isso o `limit(1)` não é
+ * "pega qualquer uma" — a policy de `casas` só deixa passar `casa_atual()`, e
+ * uma conta tem no máximo uma casa no v1 (ADR-0012). Um filtro explícito aqui
+ * esconderia o dia em que a policy parasse de negar: o teste continuaria verde
+ * pelo motivo errado.
  */
-export async function leCasaPovoada(db: CasaDb): Promise<CasaPovoada | null> {
+export async function leCasaDaIdentidade(db: CasaDb): Promise<Casa | null> {
   const [casa] = await db
     .select({ id: casas.id, nome: casas.nome, tipo: casas.tipo })
     .from(casas)
     .limit(1)
+
+  return casa ?? null
+}
+
+/**
+ * A casa de quem está pedindo, com moradores e tarefas. `null` quando a pessoa
+ * ainda não tem casa — é o estado normal entre o registro e a Fase 0, não erro.
+ *
+ * Nenhuma das três consultas filtra por casa: quem filtra é a RLS (ADR-0002).
+ */
+export async function leCasaPovoada(db: CasaDb): Promise<CasaPovoada | null> {
+  const casa = await leCasaDaIdentidade(db)
 
   if (!casa) return null
 

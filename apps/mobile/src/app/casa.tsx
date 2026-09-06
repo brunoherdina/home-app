@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import type { MoradorPublico, Tarefa } from '@casa/contracts'
+import { DIAS_DE_VALIDADE_DO_CONVITE, type MoradorPublico, type Tarefa } from '@casa/contracts'
 import { Redirect, useRouter } from 'expo-router'
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, Share, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SemConexao } from '../componentes/SemConexao'
 import { Aviso } from '../design-system/componentes/Aviso'
 import { Botao } from '../design-system/componentes/Botao'
@@ -9,6 +9,8 @@ import { cores, espacos, raios, textos, type Cor } from '../design-system/tokens
 import { sai } from '../lib/api/auth'
 import { buscaCasa, chaveDaCasa } from '../lib/api/casa'
 import { ErroDaApi } from '../lib/api/cliente'
+import { geraConvite } from '../lib/api/convite'
+import { mensagemDoErro } from '../lib/erros'
 
 /**
  * A casa povoada — o fim do critério de aceite do Épico 1: "cai numa casa já
@@ -44,6 +46,12 @@ export default function Casa() {
       router.replace('/entrar')
     },
   })
+
+  /**
+   * O convite não é buscado no `mount`: navegar até a casa não deve emitir
+   * código. Cada toque em "Convidar" gera um — ver `lib/api/convite.ts`.
+   */
+  const convite = useMutation({ mutationFn: geraConvite })
 
   function confirmaSaida() {
     Alert.alert('Sair da conta?', 'Para voltar, é só entrar de novo com e-mail e senha.', [
@@ -103,6 +111,24 @@ export default function Casa() {
         )}
       </View>
 
+      <View style={estilos.secao}>
+        <Text style={estilos.rotulo}>Convidar</Text>
+        {convite.data ? (
+          <ConviteGerado codigo={convite.data.codigo} />
+        ) : (
+          <Text style={estilos.nota}>
+            Gere um código e mande para quem mora com você. Ele vale para uma pessoa.
+          </Text>
+        )}
+        {convite.isError ? <Aviso mensagem={mensagemDoErro(convite.error)} /> : null}
+        <Botao
+          titulo={convite.data ? 'Gerar outro código' : 'Convidar alguém'}
+          variante="texto"
+          aoTocar={() => convite.mutate()}
+          ocupado={convite.isPending}
+        />
+      </View>
+
       <Text style={estilos.nota}>
         Dividir e concluir tarefas chega na próxima etapa. Por enquanto, a casa já está de pé.
       </Text>
@@ -116,6 +142,37 @@ export default function Casa() {
         ocupado={saida.isPending}
       />
     </ScrollView>
+  )
+}
+
+/**
+ * O código, grande e espaçado, com o caminho mais curto para o WhatsApp.
+ *
+ * `letterSpacing` não é enfeite: o código é DITADO tanto quanto colado, e
+ * caracteres grudados são onde se lê `0` por `O` — a confusão que o alfabeto do
+ * contrato já evita na geração e que a tipografia não deve reintroduzir.
+ *
+ * `Share` nativo e não um botão de copiar: copiar exige a pessoa abrir o
+ * WhatsApp, achar a conversa e colar; a folha nativa faz os três. O texto vai
+ * junto com uma frase porque um código solto na conversa não se explica.
+ */
+function ConviteGerado({ codigo }: { codigo: string }) {
+  return (
+    <View style={estilos.convite}>
+      <Text style={estilos.codigo} accessibilityLabel={`Código ${codigo.split('').join(' ')}`}>
+        {codigo}
+      </Text>
+      <Text style={estilos.nota}>Vale por {DIAS_DE_VALIDADE_DO_CONVITE} dias, para uma pessoa.</Text>
+      <Botao
+        titulo="Compartilhar"
+        variante="texto"
+        aoTocar={() => {
+          void Share.share({
+            message: `Entra na nossa casa no Casa com o código ${codigo}.`,
+          })
+        }}
+      />
+    </View>
   )
 }
 
@@ -163,5 +220,14 @@ const estilos = StyleSheet.create({
     borderColor: cores.cinza,
   },
   tituloDaTarefa: { ...textos.corpo, color: cores.tinta },
+  convite: {
+    alignItems: 'center',
+    gap: espacos.xs,
+    padding: espacos.md,
+    borderRadius: raios.md,
+    borderWidth: 1,
+    borderColor: cores.moss,
+  },
+  codigo: { ...textos.titulo, color: cores.moss, letterSpacing: 6 },
   nota: { ...textos.legenda, color: cores.cinza, marginTop: 'auto' },
 })
