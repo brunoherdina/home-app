@@ -139,15 +139,28 @@ estrutura() { # asserções que valem depois de todo up
     "$(como_owner -c "select has_table_privilege('casa_auth','tarefas','SELECT')")"
 
   # ── sessoes e revoked_tokens: assunto do casa_auth (ADR-0013).
-  afirma "uma policy em sessoes" "1" \
+  # Três policies: a do casa_auth (0001) e as duas do logout (0004).
+  afirma "tres policies em sessoes" "3" \
     "$(como_owner -c "select count(*) from pg_policies where tablename='sessoes'")"
   afirma "casa_auth lê e escreve sessoes" "t" \
     "$(como_owner -c "select has_table_privilege('casa_auth','sessoes','SELECT') and has_table_privilege('casa_auth','sessoes','INSERT') and has_table_privilege('casa_auth','sessoes','UPDATE')")"
   # DELETE é do worker de limpeza (época futura concede, com o role do job).
   afirma "casa_auth não deleta sessoes" "f" \
     "$(como_owner -c "select has_table_privilege('casa_auth','sessoes','DELETE')")"
-  afirma "casa_app não alcança sessoes" "f" \
-    "$(como_owner -c "select has_table_privilege('casa_app','sessoes','SELECT')")"
+  # ── 0004: o logout dá a casa_app o raio mínimo em sessoes — e nada além.
+  afirma "casa_app lê familia_id (acha a família pelo jti)" "t" \
+    "$(como_owner -c "select has_column_privilege('casa_app','sessoes','familia_id','SELECT')")"
+  afirma "casa_app escreve revogada_em (sair da conta)" "t" \
+    "$(como_owner -c "select has_column_privilege('casa_app','sessoes','revogada_em','UPDATE')")"
+  # O que NÃO existe é a asserção que segura o desenho: com UPDATE em
+  # consumida_em, uma rota autenticada desfaria a rotação e revalidaria um
+  # refresh já gasto; com SELECT em substituida_por, mapearia a cadeia inteira.
+  afirma "casa_app NÃO desfaz a rotação" "f" \
+    "$(como_owner -c "select has_column_privilege('casa_app','sessoes','consumida_em','UPDATE')")"
+  afirma "casa_app NÃO lê a cadeia de sucessores" "f" \
+    "$(como_owner -c "select has_column_privilege('casa_app','sessoes','substituida_por','SELECT')")"
+  afirma "casa_app não insere nem deleta sessoes" "f" \
+    "$(como_owner -c "select has_any_column_privilege('casa_app','sessoes','INSERT') or has_table_privilege('casa_app','sessoes','DELETE')")"
   afirma "uma policy em revoked_tokens" "1" \
     "$(como_owner -c "select count(*) from pg_policies where tablename='revoked_tokens'")"
   afirma "casa_auth lê e insere revoked_tokens" "t" \

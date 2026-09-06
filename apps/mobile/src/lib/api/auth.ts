@@ -41,3 +41,40 @@ export async function entra(dados: Login): Promise<void> {
   })
   await sessao.guardaTokens(par)
 }
+
+/**
+ * Sair da conta neste aparelho.
+ *
+ * Duas coisas, e só a primeira pode falhar: avisar o servidor (que revoga a
+ * família do refresh — ADR-0008) e apagar o cofre local. A ordem importa: o
+ * servidor precisa do refresh que só existe enquanto o cofre não foi limpo.
+ *
+ * O `finally` é o desenho, não descuido. Quem pediu para sair sai — sempre. Se
+ * a revogação não acontecer (sem rede, API fora, cofre ilegível), o refresh
+ * segue válido no servidor até vencer, e isso é o menos ruim dos dois: recusar
+ * o logout por falta de sinal deixa a pessoa presa numa conta no aparelho, e a
+ * saída dela vira desinstalar o app — que não revoga nada também.
+ *
+ * O erro é engolido porque não há o que a tela faça com ele. Uma faixa
+ * "não deu para sair" depois de a sessão local já ter sumido só contradiz o que
+ * a pessoa está vendo.
+ */
+export async function sai(): Promise<void> {
+  try {
+    const refreshToken = await sessao.leRefreshToken()
+    if (refreshToken) {
+      await requisita('/api/auth/logout', {
+        method: 'POST',
+        body: JSON.stringify({ refreshToken }),
+        // 204 sem corpo: `requisita` entrega `null` e não há contrato a checar.
+        valida: () => undefined,
+      })
+    }
+  } catch {
+    // Revogação é melhor-esforço; a limpeza local não é.
+  } finally {
+    // `encerra` e não `expira`: ninguém precisa ser avisado de que a sessão
+    // morreu — foi a própria pessoa que pediu, e quem chamou já vai navegar.
+    await sessao.encerra()
+  }
+}

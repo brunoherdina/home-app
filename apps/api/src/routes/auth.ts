@@ -23,10 +23,13 @@ function valida<T extends z.ZodType>(schema: T, corpo: unknown): z.infer<T> {
  * Todas passam por `request.semIdentidade`, nunca pelo pool cru: é o que o
  * ADR-0013 troca pela exceção, e o que `npm run guards` cobra.
  *
+ * `logout` também vive sob `/api/auth`, mas em `routes/sessao.ts`: revogar
+ * exige identidade, e o `onRequest` daqui vale para o plugin inteiro — juntar
+ * as duas coisas daria `exigeIdentidade` a register e login.
+ *
  * Fora do escopo desta story, de propósito: `verify-email` (o transporte do
  * e-mail só existe no Épico 0b — token que ninguém consegue resgatar seria
- * decoração), `google` (ADR-0003, ainda sem client id) e `logout` (revogar
- * exige identidade, então é rota autenticada, não daqui).
+ * decoração) e `google` (ADR-0003, ainda sem client id).
  */
 export const rotasAuth: FastifyPluginAsync = async (app) => {
   // Registrado DENTRO deste plugin: encapsulamento do Fastify faz o limite

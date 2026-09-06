@@ -1,10 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import type { MoradorPublico, Tarefa } from '@casa/contracts'
-import { Redirect } from 'expo-router'
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Redirect, useRouter } from 'expo-router'
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SemConexao } from '../componentes/SemConexao'
 import { Aviso } from '../design-system/componentes/Aviso'
+import { Botao } from '../design-system/componentes/Botao'
 import { cores, espacos, raios, textos, type Cor } from '../design-system/tokens'
+import { sai } from '../lib/api/auth'
 import { buscaCasa, chaveDaCasa } from '../lib/api/casa'
 import { ErroDaApi } from '../lib/api/cliente'
 
@@ -23,6 +25,32 @@ import { ErroDaApi } from '../lib/api/cliente'
  */
 export default function Casa() {
   const casaQuery = useQuery({ queryKey: chaveDaCasa, queryFn: buscaCasa })
+  const cache = useQueryClient()
+  const router = useRouter()
+
+  /**
+   * `cache.clear()` não é higiene, é correção: sem ele a casa e os moradores de
+   * quem saiu ficam no cache, e a próxima pessoa a entrar NESTE aparelho vê a
+   * tela da anterior no intervalo entre o login e a primeira resposta. Num app
+   * de duas pessoas na mesma casa isso passa despercebido; em qualquer outro
+   * caso é vazamento de dado entre contas.
+   *
+   * `sai()` nunca rejeita (lib/api/auth.ts) — não há `onError` a escrever.
+   */
+  const saida = useMutation({
+    mutationFn: sai,
+    onSuccess: () => {
+      cache.clear()
+      router.replace('/entrar')
+    },
+  })
+
+  function confirmaSaida() {
+    Alert.alert('Sair da conta?', 'Para voltar, é só entrar de novo com e-mail e senha.', [
+      { text: 'Ficar', style: 'cancel' },
+      { text: 'Sair', style: 'destructive', onPress: () => saida.mutate() },
+    ])
+  }
 
   if (casaQuery.isPending) {
     return (
@@ -78,6 +106,15 @@ export default function Casa() {
       <Text style={estilos.nota}>
         Dividir e concluir tarefas chega na próxima etapa. Por enquanto, a casa já está de pé.
       </Text>
+
+      {/* Variante `texto` e no fim da rolagem de propósito: sair é a ação mais
+          rara desta tela e a única que custa digitar a senha de volta. */}
+      <Botao
+        titulo="Sair da conta"
+        variante="texto"
+        aoTocar={confirmaSaida}
+        ocupado={saida.isPending}
+      />
     </ScrollView>
   )
 }

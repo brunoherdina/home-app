@@ -29,6 +29,13 @@
       "when": 1788641767011,
       "tag": "0003_casa_e_tarefas",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788647848196,
+      "tag": "0004_logout",
+      "breakpoints": true
     }
   ]
 }

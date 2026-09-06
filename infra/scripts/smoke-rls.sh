@@ -52,6 +52,10 @@ CASA_A='aaaaaaaa-aaaa-4aaa-8aaa-000000000001'
 CASA_B='bbbbbbbb-bbbb-4bbb-8bbb-000000000002'
 TAREFA_A='cccccccc-cccc-4ccc-8ccc-000000000001'
 TAREFA_B='dddddddd-dddd-4ddd-8ddd-000000000002'
+# Sessões do smoke de logout (migration 0004). Saem por cascade quando os
+# moradores são apagados — a FK de sessoes é ON DELETE cascade.
+SESSAO_ANA='eeeeeeee-eeee-4eee-8eee-000000000001'
+SESSAO_BRU='ffffffff-ffff-4fff-8fff-000000000002'
 # A casa que a Dora cria via cria_casa() — id é sorteado pela função, então a
 # limpeza acha pelo nome.
 CASA_DORA='Casa Smoke da Dora'
@@ -134,6 +138,9 @@ como_admin "
   insert into tarefas (id, casa_id, titulo) values
     ('$TAREFA_A', '$CASA_A', 'Louça da casa A'),
     ('$TAREFA_B', '$CASA_B', 'Louça da casa B');
+  insert into sessoes (jti, morador_id, familia_id, expira_em) values
+    ('$SESSAO_ANA', '$ANA', '$SESSAO_ANA', now() + interval '60 days'),
+    ('$SESSAO_BRU', '$BRU', '$SESSAO_BRU', now() + interval '60 days');
 " >/dev/null
 
 # 6. Mesma casa aparece; a outra casa é zero — nem por filtro explícito.
@@ -165,8 +172,21 @@ afirma "e não vê casa nenhuma" "0" \
 # policy — nem a própria pessoa lê o próprio hash pela API.
 contem "hash_senha não é coluna do casa_app" "permission denied" \
   "$(como_app "begin; set local app.current_user_id = '$ANA'; select hash_senha from moradores; commit;")"
-contem "sessoes não é assunto do casa_app" "permission denied" \
-  "$(como_app "select count(*) from sessoes")"
+# 9b. sessoes deixou de ser inalcançável para o casa_app na 0004 (sair da
+# conta), e o que ele ganhou é estreito o bastante para caber em cinco
+# asserções: só as próprias linhas, nada da rotação, e nenhuma escrita além de
+# encerrar. É o recorte que permite ao logout rodar sob RLS em vez de sob um
+# `where morador_id = $1` escrito à mão no serviço.
+afirma "sem identidade, casa_app não vê sessão nenhuma" "0" \
+  "$(como_app "select count(*) from sessoes" | tr -d '[:space:]')"
+afirma "Ana vê só a própria sessão" "1" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; select count(*) from sessoes; commit;" | tr -d '[:space:]')"
+afirma "e não alcança a sessão do Bruno nem por jti" "0" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; select count(*) from sessoes where jti = '$SESSAO_BRU'; commit;" | tr -d '[:space:]')"
+contem "a cadeia de rotação não é coluna do casa_app" "permission denied" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; select substituida_por from sessoes; commit;")"
+contem "e consumida_em não é escrita dele" "permission denied" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; update sessoes set consumida_em = now(); commit;")"
 
 # 10. casa_auth (ADR-0013): lê credencial SEM identidade injetada — o limite
 # dele é o GRANT por coluna, não a policy.
@@ -174,7 +194,11 @@ afirma "casa_auth lê credencial sem identidade" "ana.smoke@example.com" \
   "$(como_auth "select email from moradores where id = '$ANA'" | tr -d '[:space:]')"
 contem "mas apelido não é assunto do auth" "permission denied" \
   "$(como_auth "select apelido from moradores")"
-afirma "casa_auth alcança sessoes" "0" \
+# As DUAS sessões, e não uma: `casa_auth` opera com `USING (true)` porque
+# login e refresh acontecem antes de existir identidade (ADR-0013). É a
+# assimetria com a asserção da Ana logo acima que mostra por que o logout
+# preferiu o casa_app — lá o escopo é policy, aqui seria `where` na mão.
+afirma "casa_auth alcança sessoes (todas — o limite dele é o GRANT)" "2" \
   "$(como_auth "select count(*) from sessoes" | tr -d '[:space:]')"
 contem "casa_auth não alcança casas" "permission denied" \
   "$(como_auth "select count(*) from casas")"

@@ -227,6 +227,52 @@ export function criaServicoDeAuth(tokens: Tokens, opcoes: OpcoesDeAuth) {
   }
 
   /**
+   * `POST /api/auth/logout` — sair da conta NESTE aparelho.
+   *
+   * Roda como `casa_app`, dentro do `withUser`, e não pelo `semIdentidade` como
+   * as três rotas de cima: aqui a identidade já está provada pelo access token,
+   * então o "só as minhas sessões" pode ser policy em vez de `where` escrito à
+   * mão (migration 0004). O WHERE abaixo não repete `morador_id` de propósito —
+   * quem nega é a RLS, e o teste de integração exercita exatamente isso.
+   *
+   * Escopo: a FAMÍLIA do refresh apresentado, não todas as do morador. "Sair"
+   * num aparelho derrubar a sessão de outro é surpresa, e não há tela de
+   * dispositivos para explicar o que aconteceu. "Sair de todos" continua
+   * possível depois, como ação distinta — a query seria a mesma sem o SELECT.
+   *
+   * Silencioso em todo caminho que não revoga nada: token ilegível, linha
+   * inexistente, família já revogada. Logout é idempotente por natureza — quem
+   * chamou já apagou o cofre do lado de cá, e um erro aqui só ensinaria o app a
+   * tentar de novo um trabalho que não sobrou.
+   *
+   * > [!warning] O access token continua valendo até expirar
+   * > A blocklist de `jti` (`revoked_tokens`, ADR-0003) fica de fora: nada lê
+   * > essa tabela hoje, e escrever numa lista que ninguém consulta é decoração.
+   * > Fazê-la valer custa uma query a mais em TODA request autenticada. O preço
+   * > de não fazer é a janela do ADR-0008 — até ~15 min em que um access já
+   * > extraído do aparelho ainda abre rota. Não é a sessão do app: essa foi
+   * > descartada da memória junto com o pedido.
+   */
+  async function encerra(db: CasaDb, refreshToken: string): Promise<void> {
+    let cracha
+    try {
+      cracha = await tokens.verificaRefresh(refreshToken)
+    } catch {
+      return
+    }
+
+    const [sessao] = await db
+      .select({ familiaId: sessoes.familiaId })
+      .from(sessoes)
+      .where(eq(sessoes.jti, cracha.jti))
+      .limit(1)
+
+    if (!sessao) return
+
+    await revogaFamilia(db, sessao.familiaId, new Date())
+  }
+
+  /**
    * Mata a família inteira numa query só — é para isso que `familia_id` existe
    * em vez de uma cadeia caminhada elo a elo.
    *
@@ -290,7 +336,7 @@ export function criaServicoDeAuth(tokens: Tokens, opcoes: OpcoesDeAuth) {
     }
   }
 
-  return { registra, autentica, renova }
+  return { registra, autentica, renova, encerra }
 }
 
 export type ServicoDeAuth = ReturnType<typeof criaServicoDeAuth>
