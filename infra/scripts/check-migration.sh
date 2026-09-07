@@ -50,7 +50,7 @@ aplica_down() {
 estrutura() { # asserções que valem depois de todo up
   # ── 0000 + 0001: toda tabela nasce com RLS, FORCE e dono casa_owner.
   local tabela
-  for tabela in moradores casas sessoes revoked_tokens convites; do
+  for tabela in moradores casas sessoes revoked_tokens tarefas convites conclusoes; do
     afirma "tabela $tabela existe" "1" \
       "$(como_owner -c "select count(*) from pg_tables where schemaname='public' and tablename='$tabela'")"
     afirma "$tabela com RLS habilitada" "t" \
@@ -127,16 +127,39 @@ estrutura() { # asserções que valem depois de todo up
   afirma "casa_app executa cria_casa()" "t" \
     "$(como_owner -c "select has_function_privilege('casa_app','cria_casa(text,tipo_de_casa)','EXECUTE')")"
 
-  # ── tarefas: dado da casa, escopado pelo mesmo casa_atual().
-  afirma "duas policies em tarefas" "2" \
+  # ── tarefas: dado da casa, escopado pelo mesmo casa_atual(). Quatro
+  # policies: SELECT (0003) + INSERT/UPDATE/DELETE (0006, Épico 2).
+  afirma "quatro policies em tarefas" "4" \
     "$(como_owner -c "select count(*) from pg_policies where tablename='tarefas'")"
-  afirma "casa_app lê e semeia tarefas" "t" \
-    "$(como_owner -c "select has_table_privilege('casa_app','tarefas','SELECT') and has_table_privilege('casa_app','tarefas','INSERT')")"
-  # Concluir e apagar tarefa são o Épico 2 — chegam com o fluxo.
-  afirma "casa_app não atualiza nem deleta tarefas" "f" \
-    "$(como_owner -c "select has_table_privilege('casa_app','tarefas','UPDATE') or has_table_privilege('casa_app','tarefas','DELETE')")"
+  afirma "casa_app lê, cria, edita e apaga tarefas" "t" \
+    "$(como_owner -c "select has_table_privilege('casa_app','tarefas','SELECT') and has_table_privilege('casa_app','tarefas','INSERT') and has_table_privilege('casa_app','tarefas','UPDATE') and has_table_privilege('casa_app','tarefas','DELETE')")"
   afirma "casa_auth não alcança tarefas" "f" \
     "$(como_owner -c "select has_table_privilege('casa_auth','tarefas','SELECT')")"
+  # ── 0006: as duas formas em que a linha NÃO pode existir são constraint, não
+  # regra de handler — handler é onde seriam esquecidas no PATCH seguinte.
+  afirma "tarefa aberta não tem responsável (CHECK)" "1" \
+    "$(como_owner -c "select count(*) from pg_constraint where conname='tarefa_aberta_sem_responsavel'")"
+  afirma "bônus só em rodízio (CHECK, ADR-0010)" "1" \
+    "$(como_owner -c "select count(*) from pg_constraint where conname='bonus_so_em_rodizio'")"
+  # As policies de escrita recusam responsável de outra casa — está no WITH CHECK.
+  afirma "INSERT e UPDATE de tarefas checam o responsável contra moradores" "2" \
+    "$(como_owner -c "select count(*) from pg_policies where tablename='tarefas' and with_check ilike '%from moradores%'")"
+
+  # ── 0007: conclusoes é append-only POR PRIVILÉGIO. SELECT e INSERT; a
+  # ausência de UPDATE/DELETE é a asserção que segura o desenho — editar o
+  # passado é o que faria os pontos virarem negociação.
+  afirma "duas policies em conclusoes" "2" \
+    "$(como_owner -c "select count(*) from pg_policies where tablename='conclusoes'")"
+  afirma "casa_app lê e registra conclusoes" "t" \
+    "$(como_owner -c "select has_table_privilege('casa_app','conclusoes','SELECT') and has_table_privilege('casa_app','conclusoes','INSERT')")"
+  afirma "casa_app NÃO edita nem apaga conclusoes" "f" \
+    "$(como_owner -c "select has_table_privilege('casa_app','conclusoes','UPDATE') or has_table_privilege('casa_app','conclusoes','DELETE')")"
+  afirma "casa_auth não alcança conclusoes" "f" \
+    "$(como_owner -c "select has_table_privilege('casa_auth','conclusoes','SELECT')")"
+  afirma "a policy de INSERT de conclusoes lê a identidade com nullif" "1" \
+    "$(como_owner -c "select count(*) from pg_policies where tablename='conclusoes' and with_check ilike '%nullif%'")"
+  afirma "pontos positivos (CHECK)" "1" \
+    "$(como_owner -c "select count(*) from pg_constraint where conname='pontos_positivos'")"
 
   # ── 0005: convites. Duas policies para casa_app (ler os da casa, criar para a
   # própria casa) e duas para casa_owner — estas últimas existem só porque o

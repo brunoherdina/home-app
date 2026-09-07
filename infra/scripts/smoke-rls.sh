@@ -289,6 +289,63 @@ contem "código que nunca existiu recebe a mesma recusa" "convite inválido" \
 contem "sem identidade, entra_na_casa() não vincula ninguém" "sem identidade" \
   "$(como_app "select entra_na_casa('$CODIGO')")"
 
+# ─── Épico 2, stories 1 e 2 — dividir e concluir (migrations 0006 e 0007).
+echo
+echo "Épico 2 — editar, atribuir e concluir ficam dentro da casa"
+
+# 19. Editar é UPDATE sob policy: Ana alcança a tarefa da casa dela e NÃO a da
+# casa B — nem por id direto. `returning 1` porque psql -q engole o "UPDATE n".
+afirma "Ana edita a tarefa da casa A" "1" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; update tarefas set peso = 'pesado' where id = '$TAREFA_A' returning 1; commit;" | tr -d '[:space:]')"
+afirma "e não alcança a tarefa da casa B para editar" "" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; update tarefas set peso = 'pesado' where id = '$TAREFA_B' returning 1; commit;" | tr -d '[:space:]')"
+afirma "nem para apagar" "" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; delete from tarefas where id = '$TAREFA_B' returning 1; commit;" | tr -d '[:space:]')"
+
+# 20. Responsável tem que morar na casa. É a policy que recusa, não o handler:
+# Carla (casa A) passa; Bruno (casa B) é barrado no WITH CHECK.
+afirma "Ana atribui a Carla (mesma casa) como dona fixa" "1" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; update tarefas set modo = 'fixo', responsavel_id = '$CARLA' where id = '$TAREFA_A' returning 1; commit;" | tr -d '[:space:]')"
+contem "e não consegue atribuir o Bruno (outra casa)" "violates row-level security policy" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; update tarefas set responsavel_id = '$BRU' where id = '$TAREFA_A'; commit;")"
+contem "criar tarefa já com responsável de fora também é barrado" "violates row-level security policy" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; insert into tarefas (casa_id, titulo, modo, responsavel_id) values (casa_atual(), 'x', 'fixo', '$BRU'); commit;")"
+
+# 21. As duas formas inválidas de linha são CHECK — nem quem é da casa passa.
+contem "tarefa aberta com responsável é contradição" "tarefa_aberta_sem_responsavel" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; update tarefas set modo = 'aberta' where id = '$TAREFA_A'; commit;")"
+contem "bônus fora do rodízio é recusado (ADR-0010)" "bonus_so_em_rodizio" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; update tarefas set bonus_detestada = true where id = '$TAREFA_A'; commit;")"
+afirma "em rodízio, o bônus entra" "1" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; update tarefas set modo = 'rodizio', bonus_detestada = true where id = '$TAREFA_A' returning 1; commit;" | tr -d '[:space:]')"
+
+# 22. Concluir é INSERT em conclusoes — a MINHA conclusão, numa tarefa da
+# MINHA casa. As três metades do WITH CHECK, uma asserção cada.
+afirma "Ana registra a própria conclusão" "1" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; insert into conclusoes (tarefa_id, casa_id, morador_id, pontos) values ('$TAREFA_A', casa_atual(), '$ANA', 3) returning 1; commit;" | tr -d '[:space:]')"
+contem "e não registra conclusão em nome da Carla" "violates row-level security policy" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; insert into conclusoes (tarefa_id, casa_id, morador_id, pontos) values ('$TAREFA_A', casa_atual(), '$CARLA', 3); commit;")"
+contem "nem conclusão de tarefa da casa B com casa_id da A" "violates row-level security policy" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; insert into conclusoes (tarefa_id, casa_id, morador_id, pontos) values ('$TAREFA_B', casa_atual(), '$ANA', 3); commit;")"
+contem "pontos zerados não registram esforço nenhum" "pontos_positivos" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; insert into conclusoes (tarefa_id, casa_id, morador_id, pontos) values ('$TAREFA_A', casa_atual(), '$ANA', 0); commit;")"
+
+# 23. Leitura escopada por casa — a Carla vê a conclusão da Ana (é o total da
+# casa); o Bruno não vê nada da casa A.
+afirma "Carla (mesma casa) vê a conclusão — alimenta o total da casa" "1" \
+  "$(como_app "begin; set local app.current_user_id = '$CARLA'; select count(*) from conclusoes; commit;" | tr -d '[:space:]')"
+afirma "Bruno (casa B) não vê conclusão nenhuma da casa A" "0" \
+  "$(como_app "begin; set local app.current_user_id = '$BRU'; select count(*) from conclusoes; commit;" | tr -d '[:space:]')"
+
+# 24. Append-only por privilégio: editar o passado não existe nem para quem
+# escreveu a linha.
+contem "casa_app não edita conclusão" "permission denied" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; update conclusoes set pontos = 99; commit;")"
+contem "nem apaga" "permission denied" \
+  "$(como_app "begin; set local app.current_user_id = '$ANA'; delete from conclusoes; commit;")"
+contem "conclusoes não são assunto do auth" "permission denied" \
+  "$(como_auth "select count(*) from conclusoes")"
+
 if ((falhas > 0)); then
   echo; echo "$falhas asserção(ões) falharam — a RLS está decorativa."
   exit 1

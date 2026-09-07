@@ -159,6 +159,56 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
 - **Skills:** `casa-dominio-tarefas` (máquina de estados, rotação, pontos), `casa-mobile-dev`,
   `casa-backend-dev`, `casa-tech-lead`.
 
+### Decisões de escopo (tech lead, 2026-09-06)
+
+Tomadas para a quebra abaixo caber no menor desenho que cumpre a regra. Cada uma corta uma
+alternativa maior de propósito:
+
+1. **Conclusão é evento, não estado terminal da tarefa.** Nasce a tabela `conclusoes`
+   (append-only); `tarefas` não ganha coluna `concluida_em`. Tarefa doméstica é recorrente por
+   natureza — a louça de hoje não "termina" a louça. Máquina de estados com pendente→concluída
+   exigiria reabertura agendada, e **frequência é Épico 4**. Preço: "o que falta hoje" não existe
+   ainda; a aba lista tarefas, não pendências do dia.
+2. **Peso de esforço é enum de 3 (`leve` / `medio` / `pesado`) → 1 / 2 / 3 pontos**, calculado no
+   servidor. Número livre digitado pelo morador vira negociação de placar entre duas pessoas, que é
+   o atrito que o produto existe para remover.
+3. **Bônus é `bonus_detestada boolean` na tarefa** → +2 pontos fixos para quem está da vez. Atributo
+   da tarefa, nunca da pessoa (ADR-0010). Só tem efeito em modo Rodízio: bônus em Fixo é aumento
+   permanente para o dono, e em Aberta é corrida por pontos.
+4. **Rotação sai da ordem estável de `moradores.criado_em`**, sem tabela de ordem. O "próximo" é o
+   morador seguinte ao responsável atual, circular. Ordem configurável é feature que ninguém pediu.
+5. **Concluir não é `SECURITY DEFINER`.** `cria_casa()` e `entra_na_casa()` existem porque o
+   privilégio bruto (`UPDATE moradores.casa_id`) abriria entrada em casa alheia — nenhuma policy
+   sobre a linha distingue "a casa que criei" de "uma casa qualquer". Aqui não: `UPDATE` em tarefa
+   com `casa_id = casa_atual()` é exatamente o que a policy sabe decidir. Função a mais é raio a
+   mais para revisar.
+6. **A navegação vira abas.** Hoje o app é um fluxo linear que termina em `casa.tsx`; a aba Tarefas
+   não cabe nele sem `expo-router` em tabs. `casa.tsx` perde a lista de tarefas e vira a aba Casa
+   (o conteúdo real dela é o Épico 3).
+
+### Quebra em stories
+
+| # | Camada | Story | Critério de aceite |
+|---|---|---|---|
+| 1 | dados | `0006`: `tarefas` ganha `peso`, `modo`, `responsavel_id`, `bonus_detestada`; policies de `UPDATE`/`DELETE` escopadas por `casa_atual()`; GRANT correspondente | `check:migration` up→down→up; `check:rls` prova que morador de outra casa não altera nem apaga tarefa **no banco**, com `SET ROLE casa_app` |
+| 2 | dados | `0007`: `conclusoes` (`tarefa_id`, `casa_id`, `morador_id`, `pontos`, `concluida_em`), append-only | `casa_app` tem só `SELECT`/`INSERT` — `UPDATE`/`DELETE` falham por privilégio, não por handler; leitura cruzada entre casas negada |
+| 3 | contracts | zod de tarefa completa, criar/editar tarefa, conclusão e `pontos` (sua parte + total da casa) | o mesmo schema valida o formulário e o payload no handler; **nenhum schema tem campo de pontos de terceiro** |
+| 4 | backend | CRUD de tarefa: `POST`/`PATCH`/`DELETE /api/tarefas` | atribuir responsável de outra casa é recusado **pela policy**, não por `if` no handler; `npm run guards` verde |
+| 5 | backend | `GET /api/tarefas` com responsável embutido | devolve modo, peso, responsável e bônus de toda tarefa da casa; nenhuma resposta carrega contador por morador |
+| 6 | backend | concluir: `POST /api/tarefas/:id/conclusoes` — pontos no servidor + rodízio avança na mesma transação | Rodízio com 3 moradores: concluir passa a vez ao próximo, circular; Fixo e Aberta não mexem no responsável; `pontos` enviado pelo cliente é ignorado |
+| 7 | backend | `GET /api/casa/pontos`: "sua parte" + total da casa | a resposta **não contém** pontos de outro morador; teste quebra se alguém adicionar breakdown por pessoa |
+| 8 | qa | guarda anti-ranking (ADR-0010) | `npm run guards` reprova query que ordene moradores por pontos e endpoint que devolva pontos alheios — a guarda entra **junto com a feature**, não em review depois |
+| 9 | client | `lib/api/tarefas.ts` + chaves de cache e invalidação | concluir invalida tarefas **e** pontos; o `401 → refresh → retry` continua valendo nas rotas novas |
+| 10 | UI | navegação em abas + aba Tarefas (Todas / Minhas / Livres) com concluir | Livres = só modo Aberta; Minhas = só as da pessoa; concluir reflete na lista sem recarregar a tela |
+| 11 | UI | FAB de adicionar + tela de tarefa (título, peso, modo, responsável, marcar detestada) | criar / editar / apagar num device físico; marcar detestada fora do Rodízio não oferece bônus |
+| 12 | UI | Fase 1 do onboarding: convidar → concluir 1 tarefa | dois moradores na casa, uma conclusão, pontos somam em "sua parte" e no total — e em nenhum lugar mais |
+| 13 | 🚧 0b | convite por **link** + **QR** + cancelar convite | **bloqueado**: exige URL pública e deep link (Épico 0b). Deep link abre a Fase 0 no ramo *tem convite*; cancelar invalida o código |
+
+> [!note] Ordem de execução
+> 1→2 antes de tudo (a UI não vem antes da camada de dados). A story 8 é a única que pode rodar em
+> paralelo com 4–7 e **deve** ficar pronta antes da 10 — a guarda precisa existir antes de a tela
+> ter onde exibir um pódio acidental. A 13 fica parada até o 0b fechar.
+
 ## Épico 3 — Cooperativo
 
 - **Meta:** o coletivo ganha vida, sem competição.
