@@ -99,7 +99,14 @@ export async function leCasaPovoada(db: CasaDb): Promise<CasaPovoada | null> {
       .from(moradores)
       .orderBy(asc(moradores.criadoEm)),
     db
-      .select({ id: tarefas.id, titulo: tarefas.titulo })
+      .select({
+        id: tarefas.id,
+        titulo: tarefas.titulo,
+        peso: tarefas.peso,
+        modo: tarefas.modo,
+        responsavelId: tarefas.responsavelId,
+        bonusDetestada: tarefas.bonusDetestada,
+      })
       .from(tarefas)
       .orderBy(asc(tarefas.criadoEm)),
   ])

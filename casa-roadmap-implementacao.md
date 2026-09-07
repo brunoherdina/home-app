@@ -194,7 +194,7 @@ alternativa maior de propósito:
 | 2 | dados | `0007`: `conclusoes` (`tarefa_id`, `casa_id`, `morador_id`, `pontos`, `concluida_em`), append-only | `casa_app` tem só `SELECT`/`INSERT` — `UPDATE`/`DELETE` falham por privilégio, não por handler; leitura cruzada entre casas negada |
 | 3 | contracts | zod de tarefa completa, criar/editar tarefa, conclusão e `pontos` (sua parte + total da casa) | o mesmo schema valida o formulário e o payload no handler; **nenhum schema tem campo de pontos de terceiro** |
 | 4 | backend | CRUD de tarefa: `POST`/`PATCH`/`DELETE /api/tarefas` | atribuir responsável de outra casa é recusado **pela policy**, não por `if` no handler; `npm run guards` verde |
-| 5 | backend | `GET /api/tarefas` com responsável embutido | devolve modo, peso, responsável e bônus de toda tarefa da casa; nenhuma resposta carrega contador por morador |
+| 5 | backend | `GET /api/tarefas` com `responsavelId` (o app resolve apelido/cor pela lista de moradores já em cache — story 3) | devolve modo, peso, responsável e bônus de toda tarefa da casa; nenhuma resposta carrega contador por morador |
 | 6 | backend | concluir: `POST /api/tarefas/:id/conclusoes` — pontos no servidor + rodízio avança na mesma transação | Rodízio com 3 moradores: concluir passa a vez ao próximo, circular; Fixo e Aberta não mexem no responsável; `pontos` enviado pelo cliente é ignorado |
 | 7 | backend | `GET /api/casa/pontos`: "sua parte" + total da casa | a resposta **não contém** pontos de outro morador; teste quebra se alguém adicionar breakdown por pessoa |
 | 8 | qa | guarda anti-ranking (ADR-0010) | `npm run guards` reprova query que ordene moradores por pontos e endpoint que devolva pontos alheios — a guarda entra **junto com a feature**, não em review depois |
