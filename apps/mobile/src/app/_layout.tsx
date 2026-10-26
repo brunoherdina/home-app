@@ -31,7 +31,9 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: (tentativas, erro) =>
-        tentativas < 1 && !(erro instanceof ErroDaApi && erro.status < 500),
+        tentativas < 1 &&
+        // `status: 0` é rede fora (SEM_CONEXAO) — vale a re-tentativa.
+        !(erro instanceof ErroDaApi && erro.status >= 400 && erro.status < 500),
       staleTime: 30_000,
     },
   },

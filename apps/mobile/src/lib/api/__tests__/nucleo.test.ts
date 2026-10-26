@@ -494,3 +494,64 @@ describe('cabeçalhos da request', () => {
     expect((await cabecalhosDe({ method: 'DELETE' })).get('authorization')).toBe('Bearer access')
   })
 })
+
+describe('rede que não responde', () => {
+  /**
+   * O fetch do RN não tem prazo. Com o telefone fora da rede da API, o botão
+   * de criar conta girava por minutos e, quando a falha enfim chegava, era um
+   * `TypeError` que a tela traduzia como "algo deu errado".
+   */
+  async function clienteCom(fetchFn: typeof fetch) {
+    const sessao = criaSessao(criaArmazenamentoFalso())
+    return criaRequisita({ baseUrl: BASE, sessao, fetchFn, prazoMs: 20 })
+  }
+
+  it('fetch que falha vira SEM_CONEXAO, não TypeError', async () => {
+    const { requisita } = await clienteCom(async () => {
+      throw new TypeError('Network request failed')
+    })
+
+    await expect(requisita('/api/auth/register', { method: 'POST', valida })).rejects.toMatchObject({
+      status: 0,
+      codigo: 'SEM_CONEXAO',
+    })
+  })
+
+  it('fetch que nunca responde é abortado no prazo e vira SEM_CONEXAO', async () => {
+    let abortado = false
+    const { requisita } = await clienteCom(
+      (_entrada, init) =>
+        new Promise((_resolve, rejeita) => {
+          init?.signal?.addEventListener('abort', () => {
+            abortado = true
+            rejeita(new DOMException('Aborted', 'AbortError'))
+          })
+        }),
+    )
+
+    await expect(requisita('/api/auth/register', { method: 'POST', valida })).rejects.toMatchObject({
+      status: 0,
+      codigo: 'SEM_CONEXAO',
+    })
+    expect(abortado).toBe(true)
+  })
+
+  it('o refresh do boot também tem prazo — o splash não fica preso', async () => {
+    const sessao = criaSessao(criaArmazenamentoFalso('refresh-guardado'))
+    const { restauraSessao } = criaRequisita({
+      baseUrl: BASE,
+      sessao,
+      prazoMs: 20,
+      fetchFn: (_entrada, init) =>
+        new Promise((_resolve, rejeita) => {
+          init?.signal?.addEventListener('abort', () =>
+            rejeita(new DOMException('Aborted', 'AbortError')),
+          )
+        }),
+    })
+
+    await expect(restauraSessao()).rejects.toMatchObject({ codigo: 'SEM_CONEXAO' })
+    // Prazo estourado não é negação: a credencial continua no cofre.
+    expect(await sessao.leRefreshToken()).toBe('refresh-guardado')
+  })
+})

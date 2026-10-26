@@ -44,11 +44,24 @@ function erroTransitorio(status: number) {
  */
 const SEM_RENOVACAO = /^\/api\/auth\/(login|register|refresh)\b/
 
+/**
+ * Quanto uma request espera pela resposta antes de desistir.
+ *
+ * O fetch do React Native não tem prazo nenhum. Com o telefone numa rede que
+ * não alcança a API (dados móveis apontando para um IP de LAN), o pacote se
+ * perde em silêncio e o botão gira por uns dois minutos, até o sistema
+ * desistir da conexão — sem dizer nada. Quinze segundos cobrem uma rede ruim
+ * de verdade e ainda devolvem "sem conexão" enquanto a pessoa está olhando.
+ */
+const PRAZO_PADRAO_MS = 15_000
+
 export type OpcoesDoNucleo = {
   baseUrl: string
   sessao: SessaoDoCliente
   /** Injetável para teste; no app é o fetch global do React Native. */
   fetchFn?: typeof fetch
+  /** Injetável para teste; no app é `PRAZO_PADRAO_MS`. */
+  prazoMs?: number
 }
 
 export type Requisita = <T>(
@@ -78,13 +91,38 @@ export type Cliente = {
   restauraSessao: () => Promise<boolean>
 }
 
-export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucleo): Cliente {
+export function criaRequisita({
+  baseUrl,
+  sessao,
+  fetchFn = fetch,
+  prazoMs = PRAZO_PADRAO_MS,
+}: OpcoesDoNucleo): Cliente {
   let refreshEmVoo: Promise<boolean> | null = null
+
+  /**
+   * O fetch com prazo. Qualquer falha antes de haver resposta — rede fora,
+   * DNS, prazo estourado — vira `SEM_CONEXAO`: sem isso a tela recebia um
+   * `TypeError` cru e mostrava "algo deu errado", que não diz à pessoa que
+   * basta tentar de novo.
+   */
+  async function buscaComPrazo(url: string, init: RequestInit): Promise<Response> {
+    const desistencia = new AbortController()
+    const prazo = setTimeout(() => desistencia.abort(), prazoMs)
+    // Quem chama ainda pode cancelar por conta própria.
+    init.signal?.addEventListener('abort', () => desistencia.abort())
+    try {
+      return await fetchFn(url, { ...init, signal: desistencia.signal })
+    } catch {
+      throw erroTransitorio(0)
+    } finally {
+      clearTimeout(prazo)
+    }
+  }
 
   /** Toda request sai com o access da memória — se houver um (ADR-0008). */
   function executa(caminho: string, init: RequestInit): Promise<Response> {
     const accessToken = sessao.leAccessToken()
-    return fetchFn(`${baseUrl}${caminho}`, {
+    return buscaComPrazo(`${baseUrl}${caminho}`, {
       ...init,
       headers: {
         // Só quando HÁ corpo. O Fastify recusa `application/json` com corpo
@@ -151,18 +189,14 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
       return false
     }
 
-    let resposta: Response
-    try {
-      resposta = await fetchFn(`${baseUrl}/api/auth/refresh`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      })
-    } catch {
-      // Rede fora, DNS, timeout: ninguém negou nada. O cofre fica; o próximo
-      // 401 tenta de novo.
-      throw erroTransitorio(0)
-    }
+    // Rede fora, DNS, prazo estourado: ninguém negou nada. `buscaComPrazo`
+    // lança `SEM_CONEXAO`, o cofre fica, e o próximo 401 tenta de novo. O
+    // prazo importa aqui também: no boot o splash espera por esta chamada.
+    const resposta = await buscaComPrazo(`${baseUrl}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    })
 
     // Negação explícita (refresh revogado, reusado ou expirado — ADR-0008):
     // é aqui, e só aqui, que a credencial é destruída.
