@@ -462,3 +462,35 @@ describe('restauração da sessão no boot', () => {
     expect(boot.contadores.refresh).toBe(1)
   })
 })
+
+describe('cabeçalhos da request', () => {
+  /**
+   * O Fastify devolve 400 para `content-type: application/json` com corpo
+   * vazio. Gerar convite e apagar tarefa não têm corpo — e falhavam no
+   * servidor porque o núcleo declarava JSON em toda request.
+   */
+  async function cabecalhosDe(init: RequestInit) {
+    let enviados: Headers | null = null
+    const sessao = criaSessao(criaArmazenamentoFalso())
+    await sessao.guardaTokens({ accessToken: 'access', refreshToken: 'refresh' })
+    const fetchFalso: typeof fetch = async (_entrada, recebido) => {
+      enviados = new Headers(recebido?.headers)
+      return new Response(null, { status: 204 })
+    }
+    const { requisita } = criaRequisita({ baseUrl: BASE, sessao, fetchFn: fetchFalso })
+    await requisita('/api/qualquer', { ...init, valida: () => undefined })
+    return enviados!
+  }
+
+  it('sem corpo não declara content-type — POST de convite e DELETE de tarefa', async () => {
+    expect((await cabecalhosDe({ method: 'POST' })).has('content-type')).toBe(false)
+    expect((await cabecalhosDe({ method: 'DELETE' })).has('content-type')).toBe(false)
+  })
+
+  it('com corpo declara JSON, e o access vai junto nos dois casos', async () => {
+    const comCorpo = await cabecalhosDe({ method: 'POST', body: '{}' })
+    expect(comCorpo.get('content-type')).toBe('application/json')
+    expect(comCorpo.get('authorization')).toBe('Bearer access')
+    expect((await cabecalhosDe({ method: 'DELETE' })).get('authorization')).toBe('Bearer access')
+  })
+})

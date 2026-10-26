@@ -87,7 +87,11 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
     return fetchFn(`${baseUrl}${caminho}`, {
       ...init,
       headers: {
-        'content-type': 'application/json',
+        // Só quando HÁ corpo. O Fastify recusa `application/json` com corpo
+        // vazio (FST_ERR_CTP_EMPTY_JSON_BODY, 400) — e request sem corpo é
+        // caminho normal aqui: gerar convite, apagar tarefa. Declarar o tipo
+        // de um corpo que não existe fazia essas duas falharem no servidor.
+        ...(init.body != null ? { 'content-type': 'application/json' } : {}),
         ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
         ...init.headers,
       },
