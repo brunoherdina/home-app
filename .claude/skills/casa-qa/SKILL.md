@@ -26,9 +26,17 @@ Baratas de escrever, impedem erosão silenciosa — o tipo de defeito que **nenh
 1. **App**: nenhum componente faz `fetch` direto; tudo por `lib/api/`.
 2. **API**: nenhum handler toca o pool cru; tudo por `withUser` ou, nas rotas públicas de auth, por `semIdentidade` (ADR-0002, ADR-0013). Sem esta, um handler fura a RLS e a suíte fica verde.
 3. **Cor literal**: `#hex`/`rgba()` fora do design system reprova.
+4. **Anti-ranking** (ADR-0010, regra §2.1), em três guardas: nenhuma query da API agrupa por morador
+   nem ordena por pontos; `conclusoes.morador_id` entra no WHERE e nunca sai no SELECT (inclui
+   `select()` sem projeção e `db.query.conclusoes`); e nenhum identificador em API, contratos ou app
+   chama-se ranking, leaderboard, pódio ou placar. É o teste da regra que "nenhum teste funcional
+   pega": a query que ordena moradores por pontos roda perfeitamente.
 
-As três são executáveis: `npm run guards` (fonte em `scripts/guards/`). Falham
-com `exit 1`, então servem de passo de CI no Épico 0b.
+Todas são executáveis: `npm run guards` (fonte em `scripts/guards/`). Falham
+com `exit 1`, então servem de passo de CI no Épico 0b. Cada guarda carrega os
+próprios exemplos (`reprova`/`aceita`) e é conferida contra eles antes da
+varredura — uma regex que deixou de pegar o próprio exemplo derruba o
+comando, em vez de ficar verde sem vigiar nada.
 
 ## Testes que o servidor próprio exige
 
