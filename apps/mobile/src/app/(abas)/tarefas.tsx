@@ -3,6 +3,7 @@ import { pontosDaTarefa, type Tarefa } from '@casa/contracts'
 import { Redirect, useRouter } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { PrimeirosPassos } from '../../componentes/PrimeirosPassos'
 import { SemConexao } from '../../componentes/SemConexao'
 import { CartaoDeTarefa } from '../../componentes/tarefa/CartaoDeTarefa'
 import { pontosPorExtenso } from '../../componentes/tarefa/rotulos'
@@ -157,6 +158,7 @@ export default function Tarefas() {
               </Text>
             </View>
             {recado ? <Aviso tom="nota" mensagem={recado} /> : null}
+            <PrimeirosPassos moradores={casaQuery.data.moradores.length} suaParte={pontos.suaParte} />
             {conclusao.isError ? <Aviso mensagem={mensagemDoErro(conclusao.error)} /> : null}
             <Segmentos rotulo="Mostrar" opcoes={FILTROS} valor={filtro} aoEscolher={setFiltro} />
           </View>
