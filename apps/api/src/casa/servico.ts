@@ -2,6 +2,7 @@ import { asc, eq, sql } from 'drizzle-orm'
 import type { Casa, CasaPovoada, CriarCasa } from '@casa/contracts'
 import type { CasaDb } from '../plugins/withUser.js'
 import { codigoPg } from '../db/erros.js'
+import { moradorDaTransacao } from '../db/identidade.js'
 import { casas, moradores, tarefas } from '../db/schema.js'
 import { ErroHttp } from '../erros.js'
 import { TEMPLATES } from './templates.js'
@@ -108,7 +109,8 @@ export async function leCasaPovoada(db: CasaDb): Promise<CasaPovoada | null> {
 
   if (!casa) return null
 
-  const [moradoresDaCasa, tarefasDaCasa] = await Promise.all([
+  const [identidade, moradoresDaCasa, tarefasDaCasa] = await Promise.all([
+    db.execute<{ id: string }>(sql`select ${moradorDaTransacao()} as id`),
     db
       .select({ id: moradores.id, apelido: moradores.apelido, cor: moradores.cor })
       .from(moradores)
@@ -116,5 +118,10 @@ export async function leCasaPovoada(db: CasaDb): Promise<CasaPovoada | null> {
     db.select(colunasDaTarefa).from(tarefas).orderBy(asc(tarefas.criadoEm)),
   ])
 
-  return { casa, moradores: moradoresDaCasa, tarefas: tarefasDaCasa }
+  // Ter casa já implica ter identidade (a policy de `casas` usa a mesma
+  // variável); `null` aqui é o `withUser` quebrado, não estado do produto.
+  const euId = identidade.rows[0]?.id
+  if (!euId) throw new Error('casa visível sem identidade na transação')
+
+  return { casa, euId, moradores: moradoresDaCasa, tarefas: tarefasDaCasa }
 }

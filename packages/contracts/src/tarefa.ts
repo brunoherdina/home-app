@@ -91,6 +91,15 @@ export const tarefaSchema = z.object({
 export type Tarefa = z.infer<typeof tarefaSchema>
 
 /**
+ * `GET /api/tarefas` — todas as tarefas da casa, na ordem em que nasceram.
+ *
+ * Sem filtro no servidor: Todas / Minhas / Livres são três recortes da MESMA
+ * lista, que o app já tem em cache — três endpoints seriam três chaves de
+ * cache para invalidar a cada conclusão.
+ */
+export const listaDeTarefasSchema = z.array(tarefaSchema)
+
+/**
  * Payload de `POST /api/tarefas` — e de `PATCH /api/tarefas/:id`, que recebe
  * o formulário INTEIRO e não um diff. A tela de tarefa edita os cinco campos
  * de uma vez, e as duas regras cruzadas abaixo só se deixam validar quando

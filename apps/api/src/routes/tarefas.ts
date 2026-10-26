@@ -1,15 +1,20 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { criarTarefaSchema, editarTarefaSchema, tarefaSchema, uuidSchema } from '@casa/contracts'
+import {
+  criarTarefaSchema,
+  editarTarefaSchema,
+  listaDeTarefasSchema,
+  tarefaSchema,
+  uuidSchema,
+} from '@casa/contracts'
 import { exigeIdentidade } from '../plugins/exigeIdentidade.js'
-import { apagaTarefa, criaTarefa, editaTarefa } from '../tarefas/servico.js'
+import { apagaTarefa, criaTarefa, editaTarefa, listaTarefas } from '../tarefas/servico.js'
 import { valida } from './valida.js'
 
 const parametrosDeTarefa = z.object({ id: uuidSchema })
 
 /**
- * CRUD de tarefa (Épico 2, story 4). Listar é a story 5 e concluir é a 6 —
- * chegam neste mesmo plugin.
+ * Tarefas da casa (Épico 2): listar (story 5) e o CRUD (story 4).
  *
  * Nenhum handler confere se a tarefa é da casa de quem pede, nem se o
  * responsável é morador dela: quem decide é a policy (ADR-0002), e o serviço
@@ -17,6 +22,11 @@ const parametrosDeTarefa = z.object({ id: uuidSchema })
  */
 export const rotasTarefas: FastifyPluginAsync = async (app) => {
   app.addHook('onRequest', exigeIdentidade)
+
+  app.get('/tarefas', async (request, reply) => {
+    const lista = await request.withUser((db) => listaTarefas(db))
+    return reply.send(listaDeTarefasSchema.parse(lista))
+  })
 
   app.post('/tarefas', async (request, reply) => {
     const dados = valida(criarTarefaSchema, request.body)

@@ -6,7 +6,8 @@ import { tarefas } from '../db/schema.js'
 import type { CasaDb } from '../plugins/withUser.js'
 import { codigoPg } from '../db/erros.js'
 import { criaCasa, leCasaPovoada } from '../casa/servico.js'
-import { apagaTarefa, criaTarefa, editaTarefa } from './servico.js'
+import { TEMPLATES } from '../casa/templates.js'
+import { apagaTarefa, criaTarefa, editaTarefa, listaTarefas } from './servico.js'
 
 /**
  * CRUD de tarefas contra o Postgres de verdade (migrations 0006/0007).
@@ -101,6 +102,44 @@ beforeAll(limpa)
 afterAll(async () => {
   await limpa()
   await Promise.all([pool.end(), admin.end()])
+})
+
+describe('listar tarefas', () => {
+  it('devolve as tarefas da casa em ordem de criação, e só as dela — a policy escopa', async () => {
+    const minha = await casaComDois()
+    const outra = await casaComDois()
+    const nova = await comoApp(minha.par, (db) =>
+      criaTarefa(db, { titulo: 'Regar plantas', peso: 'leve', modo: 'fixo', responsavelId: minha.par, bonusDetestada: false }),
+    )
+    const deFora = await comoApp(outra.dono, (db) =>
+      criaTarefa(db, { titulo: 'Tarefa de outra casa', peso: 'leve', modo: 'aberta', responsavelId: null, bonusDetestada: false }),
+    )
+
+    const lista = await comoApp(minha.dono, (db) => listaTarefas(db))
+
+    expect(lista.map((t) => t.titulo)).toEqual([...TEMPLATES.casal, 'Regar plantas'])
+    expect(lista.at(-1)).toEqual(nova)
+    expect(lista.map((t) => t.id)).not.toContain(deFora.id)
+  })
+
+  it('cada tarefa é só a tarefa: nenhum contador, nenhum histórico por morador (ADR-0010)', async () => {
+    const { dono } = await casaComDois()
+    const [tarefa] = await comoApp(dono, (db) => listaTarefas(db))
+    expect(Object.keys(tarefa!).sort()).toEqual(
+      ['bonusDetestada', 'id', 'modo', 'peso', 'responsavelId', 'titulo'],
+    )
+  })
+
+  it('sem casa é lista vazia, não erro', async () => {
+    const solto = await novaConta('Solto')
+    expect(await comoApp(solto, (db) => listaTarefas(db))).toEqual([])
+  })
+
+  it('a casa povoada diz qual dos moradores é quem pergunta', async () => {
+    const { dono, par } = await casaComDois()
+    expect((await comoApp(dono, (db) => leCasaPovoada(db)))?.euId).toBe(dono)
+    expect((await comoApp(par, (db) => leCasaPovoada(db)))?.euId).toBe(par)
+  })
 })
 
 describe('criar tarefa', () => {

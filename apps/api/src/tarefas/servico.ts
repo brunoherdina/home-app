@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import type { CriarTarefa, EditarTarefa, Tarefa } from '@casa/contracts'
 import type { CasaDb } from '../plugins/withUser.js'
 import { colunasDaTarefa, leCasaDaIdentidade } from '../casa/servico.js'
@@ -30,7 +30,7 @@ class ResponsavelInvalidoError extends ErroHttp {
  * fora da RLS para descobrir que a tarefa existe, e seria o oráculo que a
  * policy existe para não ser.
  */
-class TarefaNaoEncontradaError extends ErroHttp {
+export class TarefaNaoEncontradaError extends ErroHttp {
   constructor() {
     super(404, 'TAREFA_NAO_ENCONTRADA', 'Essa tarefa não existe mais.')
   }
@@ -50,6 +50,18 @@ function traduz(erro: unknown): unknown {
     return new ResponsavelInvalidoError()
   }
   return erro
+}
+
+/**
+ * `GET /api/tarefas` — as tarefas da casa, na ordem em que nasceram.
+ *
+ * Sem `where`: quem escopa é a policy de SELECT (ADR-0002), como em
+ * `leCasaPovoada`. A projeção é `colunasDaTarefa` e nada além — nenhuma
+ * contagem de conclusões, nenhum "quem fez por último": tarefa não carrega
+ * histórico por pessoa (ADR-0010). Sem casa, a policy devolve lista vazia.
+ */
+export async function listaTarefas(db: CasaDb): Promise<Tarefa[]> {
+  return db.select(colunasDaTarefa).from(tarefas).orderBy(asc(tarefas.criadoEm))
 }
 
 /**

@@ -46,9 +46,15 @@ export type Casa = z.infer<typeof casaSchema>
  *
  * `moradores` usa `moradorPublicoSchema`: id, apelido e cor, nunca e-mail nem
  * credencial. Quem lê a lista é outro morador.
+ *
+ * `euId` é qual dos `moradores` é quem pergunta (Épico 2). O app precisa
+ * disso para o filtro "Minhas" e para dizer "sua vez" — e não tem outro jeito
+ * de saber: os tokens são opacos para o cliente (`parDeTokensSchema`), e
+ * decodificar o JWT no app seria depender do formato de uma credencial.
  */
 export const casaPovoadaSchema = z.object({
   casa: casaSchema,
+  euId: uuidSchema,
   moradores: z.array(moradorPublicoSchema),
   tarefas: z.array(tarefaSchema),
 })
