@@ -49,7 +49,7 @@ A última linha é a que costuma sair errada: rede fora não é credencial negad
 O refresh continua no cofre e a pessoa volta direto para a casa quando o sinal
 voltar (ADR-0008).
 
-Sair da conta fica no fim da tela da casa. Revoga a **família** do refresh no
+Sair da conta fica no fim da aba Casa. Revoga a **família** do refresh no
 servidor (`POST /api/auth/logout`, sob RLS — migration 0004) e apaga o cofre
 local. As duas metades são independentes de propósito: sem rede, a limpeza
 local acontece do mesmo jeito e a revogação fica para trás — quem pediu para
@@ -60,7 +60,7 @@ escrever numa lista que ninguém consulta seria decoração.
 
 ## Convite por código curto
 
-A tela da casa gera um código de 6 caracteres; quem recebe digita em
+A aba Casa (e o cartão de primeiros passos) gera um código de 6 caracteres; quem recebe digita em
 `/entrar-na-casa` e cai na MESMA casa. Uso único, validade de 7 dias, sem deep
 link e sem URL pública — é a fatia do convite do Épico 2 que funciona na LAN.
 
@@ -74,9 +74,24 @@ Entrar numa casa continua sem ser um `UPDATE`: é a função `entra_na_casa()`
 não tem `UPDATE (casa_id)` em `moradores`, então descobrir o uuid de uma casa
 não basta para entrar nela.
 
-Fora do escopo desta fase, de propósito: QR code e deep link (precisam de URL
-pública — Épico 0b), cancelar convite, login com Google (sem client id) e
-concluir tarefa (Épico 2). A lista da casa é leitura pura.
+Fora do escopo, de propósito: QR code e deep link (precisam de URL pública —
+Épico 0b), cancelar convite e login com Google (sem client id).
+
+## Tarefas (Épico 2)
+
+Depois da Fase 0 o app vira **abas**: Tarefas e Casa. Início e Objetivos entram
+com os Épicos 3 e 4 — aba vazia esperando conteúdo seria um canto morto.
+
+* **Tarefas** — a lista da casa em três recortes (Todas, Minhas, Livres), os
+  pontos ("sua parte" e o total da casa, e em nenhum outro lugar), o cartão de
+  **primeiros passos** (Fase 1: convidar → concluir uma tarefa) e o `+` para
+  criar. Tocar num cartão abre a tela de editar/apagar.
+* **Casa** — quem mora aqui, convidar e sair.
+
+Concluir pede confirmação: conclusão é evento append-only e não se desfaz.
+Toda mudança de tarefa invalida `tarefas`, `casa` e `pontos` juntas
+(`lib/api/chaves.ts`) — apagar também mexe nos pontos, porque as conclusões da
+tarefa saem por cascade.
 
 ## Device físico no WSL2
 

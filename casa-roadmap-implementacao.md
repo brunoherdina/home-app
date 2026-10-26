@@ -209,6 +209,17 @@ alternativa maior de propósito:
 > paralelo com 4–7 e **deve** ficar pronta antes da 10 — a guarda precisa existir antes de a tela
 > ter onde exibir um pódio acidental. A 13 fica parada até o 0b fechar.
 
+- **Status (2026-10-26):** stories 1–12 entregues; a 13 segue bloqueada pelo 0b. Decisões tomadas
+  na implementação, que a tabela acima não fixava:
+  - **qualquer morador conclui qualquer tarefa**, e os pontos — bônus incluído — vão para quem fez;
+    cobrir o par é comportamento desejado, não exceção;
+  - **a vez do rodízio anda a partir do responsável**, não de quem concluiu: cobrir o par não muda
+    de quem é a próxima. Ninguém da vez recomeça do primeiro morador;
+  - `GET /api/casa` ganhou **`euId`**: o filtro Minhas precisa saber quem é você, e os tokens são
+    opacos para o app;
+  - concluir pede **confirmação** no app, porque conclusão não se desfaz (append-only, 0007);
+  - a **Fase 1** é um cartão derivado do estado (moradores ≥ 2, sua parte > 0), sem persistência.
+
 ## Épico 3 — Cooperativo
 
 - **Meta:** o coletivo ganha vida, sem competição.
