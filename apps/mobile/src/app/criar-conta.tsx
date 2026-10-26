@@ -127,10 +127,10 @@ export default function CriarConta() {
         textContentType="newPassword"
         returnKeyType="go"
         onSubmitEditing={() => void enviar()}
+        // A regra vem do schema compartilhado; a dica só a antecipa, para a
+        // pessoa não descobrir o mínimo errando.
+        dica="Pelo menos 12 caracteres. Uma frase que você lembre serve."
       />
-      {/* A regra vem do schema compartilhado; o texto abaixo só a antecipa,
-          para a pessoa não descobrir o mínimo errando. */}
-      <Aviso tom="nota" mensagem="Pelo menos 12 caracteres. Uma frase que você lembre serve." />
 
       {formState.isSubmitted && !formState.isValid ? (
         <Aviso mensagem="Confira os campos marcados acima." />

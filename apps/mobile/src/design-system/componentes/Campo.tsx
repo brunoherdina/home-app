@@ -6,6 +6,12 @@ type Props = TextInputProps & {
   rotulo: string
   /** Mensagem do zod compartilhado (ADR-0009) — a tela não reescreve a regra. */
   erro?: string
+  /**
+   * Orientação antes do erro (ex.: o tamanho mínimo da senha). Ocupa a mesma
+   * linha reservada do erro e cede o lugar a ele quando há um — como caixa
+   * separada, parecia um segundo campo vazio.
+   */
+  dica?: string
 }
 
 /**
@@ -16,7 +22,7 @@ type Props = TextInputProps & {
  * biblioteca de formulário não deveria tocar no design system.
  */
 export const Campo = forwardRef<TextInput, Props>(function Campo(
-  { rotulo, erro, style, ...resto },
+  { rotulo, erro, dica, style, ...resto },
   ref,
 ) {
   return (
@@ -33,8 +39,8 @@ export const Campo = forwardRef<TextInput, Props>(function Campo(
       />
       {/* Espaço reservado para o erro: sem ele, a mensagem aparecendo empurra
           o resto do formulário para baixo e o dedo erra o campo seguinte. */}
-      <Text style={estilos.erro} numberOfLines={2}>
-        {erro ?? ' '}
+      <Text style={erro ? estilos.erro : estilos.dica} numberOfLines={2}>
+        {erro ?? dica ?? ' '}
       </Text>
     </View>
   )
@@ -54,4 +60,5 @@ const estilos = StyleSheet.create({
   },
   entradaComErro: { borderColor: cores.coral },
   erro: { ...textos.legenda, color: cores.coral, minHeight: 18 },
+  dica: { ...textos.legenda, color: cores.cinza, minHeight: 18 },
 })

@@ -6,6 +6,7 @@ type Props<T extends FieldValues> = TextInputProps & {
   control: Control<T>
   name: FieldPath<T>
   rotulo: string
+  dica?: string
 }
 
 /**
