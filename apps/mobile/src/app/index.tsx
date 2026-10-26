@@ -12,7 +12,7 @@ import { ErroDaApi, restauraSessao } from '../lib/api/cliente'
  *
  *   sem sessão            → /entrar
  *   sessão, sem casa      → /nova-casa   (ramo do criador)
- *   sessão, com casa      → /casa
+ *   sessão, com casa      → /tarefas     (a aba do loop central)
  *
  * As duas perguntas são feitas em SEQUÊNCIA e o splash só sai depois das duas.
  * É o que o roadmap chama de "sessão restaurada antes do splash sair", levado
@@ -77,5 +77,5 @@ export default function Boot() {
     )
   }
 
-  return <Redirect href={casaQuery.data ? '/casa' : '/nova-casa'} />
+  return <Redirect href={casaQuery.data ? '/tarefas' : '/nova-casa'} />
 }

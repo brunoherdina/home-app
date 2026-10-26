@@ -43,7 +43,7 @@ export default function EntrarNaCasa() {
       // Invalida em vez de escrever: `POST /casas/entrar` devolve a casa, não a
       // casa POVOADA — quem sabe as tarefas e quem já mora nela é o servidor.
       await cache.invalidateQueries({ queryKey: chaveDaCasa })
-      router.replace('/casa')
+      router.replace('/tarefas')
     },
   })
 

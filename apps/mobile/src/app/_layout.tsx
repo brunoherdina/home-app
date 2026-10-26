@@ -73,7 +73,9 @@ export default function RootLayout() {
             ramo do convite e pode ter escolhido errado — voltar cai em
             nova-casa, que é um destino legítimo. */}
         <Stack.Screen name="entrar-na-casa" options={{ title: 'Entrar numa casa' }} />
-        <Stack.Screen name="casa" options={{ headerShown: false, gestureEnabled: false }} />
+        {/* As abas (Tarefas, Casa) têm o próprio cabeçalho. Sem gesto de voltar
+            pelo mesmo motivo de antes: atrás delas só há o fluxo da Fase 0. */}
+        <Stack.Screen name="(abas)" options={{ headerShown: false, gestureEnabled: false }} />
       </Stack>
     </QueryClientProvider>
   )

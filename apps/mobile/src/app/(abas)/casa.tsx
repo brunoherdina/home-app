@@ -1,29 +1,29 @@
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import { DIAS_DE_VALIDADE_DO_CONVITE, type MoradorPublico, type Tarefa } from '@casa/contracts'
+import { DIAS_DE_VALIDADE_DO_CONVITE, type MoradorPublico } from '@casa/contracts'
 import { Redirect, useRouter } from 'expo-router'
 import { ActivityIndicator, Alert, Share, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { SemConexao } from '../componentes/SemConexao'
-import { Aviso } from '../design-system/componentes/Aviso'
-import { Botao } from '../design-system/componentes/Botao'
-import { cores, espacos, raios, textos, type Cor } from '../design-system/tokens'
-import { sai } from '../lib/api/auth'
-import { buscaCasa, chaveDaCasa } from '../lib/api/casa'
-import { ErroDaApi } from '../lib/api/cliente'
-import { geraConvite } from '../lib/api/convite'
-import { mensagemDoErro } from '../lib/erros'
+import { SemConexao } from '../../componentes/SemConexao'
+import { Aviso } from '../../design-system/componentes/Aviso'
+import { Botao } from '../../design-system/componentes/Botao'
+import { cores, espacos, raios, textos, type Cor } from '../../design-system/tokens'
+import { sai } from '../../lib/api/auth'
+import { buscaCasa, chaveDaCasa } from '../../lib/api/casa'
+import { ErroDaApi } from '../../lib/api/cliente'
+import { geraConvite } from '../../lib/api/convite'
+import { mensagemDoErro } from '../../lib/erros'
 
 /**
- * A casa povoada — o fim do critério de aceite do Épico 1: "cai numa casa já
- * povoada em menos de um minuto".
+ * A aba Casa — quem mora aqui, convidar e sair.
  *
- * É leitura pura nesta versão. Concluir tarefa, atribuir e os três modos são o
- * Épico 2; a nota no rodapé existe para a lista não parecer quebrada por não
- * responder ao toque.
+ * Até o Épico 2 era aqui que a casa povoada listava as tarefas; com as abas
+ * (decisão de escopo 6) a lista mora na aba Tarefas, e esta fica com o que é
+ * da casa. O conteúdo de verdade dela — nível, ofensiva, meta coletiva — é o
+ * Épico 3.
  *
- * O que esta tela NÃO mostra é tão deliberado quanto o que mostra: nenhuma
- * tarefa tem dono, nenhum morador tem contador, e a lista de moradores não é
- * ordenada por nada que se pareça com desempenho (manifesto §2 — sem pódio,
- * sem ranking). A ordem vem do servidor, que a devolve por data de entrada.
+ * O que esta tela NÃO mostra é tão deliberado quanto o que mostra: nenhum
+ * morador tem contador nem pontos ao lado, e a lista não é ordenada por nada
+ * que se pareça com desempenho (manifesto §2 — sem pódio, sem ranking). A
+ * ordem vem do servidor, que a devolve por data de entrada.
  */
 export default function Casa() {
   const casaQuery = useQuery({ queryKey: chaveDaCasa, queryFn: buscaCasa })
@@ -81,7 +81,7 @@ export default function Casa() {
   // ramo do criador em vez de desenhar uma casa vazia que não existe.
   if (!casaQuery.data) return <Redirect href="/nova-casa" />
 
-  const { casa, moradores, tarefas } = casaQuery.data
+  const { casa, euId, moradores } = casaQuery.data
 
   return (
     <ScrollView contentContainerStyle={estilos.conteudo}>
@@ -91,24 +91,9 @@ export default function Casa() {
         <Text style={estilos.rotulo}>Quem mora aqui</Text>
         <View style={estilos.moradores}>
           {moradores.map((morador) => (
-            <ChipDeMorador key={morador.id} morador={morador} />
+            <ChipDeMorador key={morador.id} morador={morador} ehVoce={morador.id === euId} />
           ))}
         </View>
-      </View>
-
-      <View style={estilos.secao}>
-        <Text style={estilos.rotulo}>Tarefas da casa</Text>
-        {tarefas.length === 0 ? (
-          <Aviso tom="nota" mensagem="Nenhuma tarefa por aqui ainda." />
-        ) : (
-          <View style={estilos.lista}>
-            {tarefas.map((tarefa: Tarefa) => (
-              <View key={tarefa.id} style={estilos.tarefa}>
-                <Text style={estilos.tituloDaTarefa}>{tarefa.titulo}</Text>
-              </View>
-            ))}
-          </View>
-        )}
       </View>
 
       <View style={estilos.secao}>
@@ -128,10 +113,6 @@ export default function Casa() {
           ocupado={convite.isPending}
         />
       </View>
-
-      <Text style={estilos.nota}>
-        Dividir e concluir tarefas chega na próxima etapa. Por enquanto, a casa já está de pé.
-      </Text>
 
       {/* Variante `texto` e no fim da rolagem de propósito: sair é a ação mais
           rara desta tela e a única que custa digitar a senha de volta. */}
@@ -183,12 +164,12 @@ function ConviteGerado({ codigo }: { codigo: string }) {
  * desconhecido — cor gravada antes de a paleta encolher, por exemplo — cai no
  * cinza em vez de derrubar a tela: leitura não deve morrer por dado legado.
  */
-function ChipDeMorador({ morador }: { morador: MoradorPublico }) {
+function ChipDeMorador({ morador, ehVoce }: { morador: MoradorPublico; ehVoce: boolean }) {
   const cor = cores[morador.cor as Cor] ?? cores.cinza
   return (
     <View style={estilos.morador}>
       <View style={[estilos.bolinha, { backgroundColor: cor }]} />
-      <Text style={estilos.apelido}>{morador.apelido}</Text>
+      <Text style={estilos.apelido}>{ehVoce ? `${morador.apelido} (você)` : morador.apelido}</Text>
     </View>
   )
 }
@@ -212,14 +193,6 @@ const estilos = StyleSheet.create({
   },
   bolinha: { width: 14, height: 14, borderRadius: raios.pilula },
   apelido: { ...textos.corpo, color: cores.tinta },
-  lista: { gap: espacos.sm },
-  tarefa: {
-    padding: espacos.md,
-    borderRadius: raios.md,
-    borderWidth: 1,
-    borderColor: cores.cinza,
-  },
-  tituloDaTarefa: { ...textos.corpo, color: cores.tinta },
   convite: {
     alignItems: 'center',
     gap: espacos.xs,

@@ -61,7 +61,7 @@ export default function NovaCasa() {
       // servidor. `await` para a próxima tela já abrir com os dados na mão, em
       // vez de piscar um estado de carregando recém-criado.
       await cache.invalidateQueries({ queryKey: chaveDaCasa })
-      router.replace('/casa')
+      router.replace('/tarefas')
     },
   })
 
