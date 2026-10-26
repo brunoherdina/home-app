@@ -8,7 +8,7 @@ import {
 import { ErroDaApi, requisita } from './cliente'
 
 /** Chave única da casa no cache — a tela e o boot leem a MESMA entrada. */
-export const chaveDaCasa = ['casa'] as const
+export { chaveDaCasa } from './chaves'
 
 /**
  * `null` = a conta existe e ainda não tem casa.
