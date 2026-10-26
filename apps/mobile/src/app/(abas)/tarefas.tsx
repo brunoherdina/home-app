@@ -68,6 +68,10 @@ export default function Tarefas() {
   const pontosQuery = useQuery({ queryKey: chaveDosPontos, queryFn: buscaPontos })
   const [filtro, setFiltro] = useState<Filtro>('todas')
   const [recado, setRecado] = useState<string | null>(null)
+  // O giro do "puxar para atualizar" é do GESTO, não de qualquer refetch: as
+  // invalidações de concluir também refazem as consultas, e o giro no topo a
+  // cada conclusão pareceria a tela recarregando.
+  const [puxando, setPuxando] = useState(false)
 
   useEffect(() => {
     if (!recado) return
@@ -141,8 +145,13 @@ export default function Tarefas() {
         contentContainerStyle={estilos.conteudo}
         refreshControl={
           <RefreshControl
-            refreshing={consultas.some((consulta) => consulta.isRefetching)}
-            onRefresh={() => consultas.forEach((consulta) => void consulta.refetch())}
+            refreshing={puxando}
+            onRefresh={() => {
+              setPuxando(true)
+              void Promise.all(consultas.map((consulta) => consulta.refetch())).finally(() =>
+                setPuxando(false),
+              )
+            }}
             colors={[cores.moss]}
             tintColor={cores.moss}
           />
