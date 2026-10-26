@@ -5,7 +5,8 @@ import type { CriarTarefa } from '@casa/contracts'
 import * as schema from '../db/schema.js'
 import type { CasaDb } from '../plugins/withUser.js'
 import { criaCasa } from '../casa/servico.js'
-import { concluiTarefa } from './conclusao.js'
+import { pontosDaCasaSchema } from '@casa/contracts'
+import { concluiTarefa, lePontosDaCasa } from './conclusao.js'
 import { criaTarefa } from './servico.js'
 
 /**
@@ -280,5 +281,41 @@ describe('concluir — escopo', () => {
 
     expect(await conclusoesDe(deLa.id)).toBe(0)
     expect(await responsavelDe(deLa.id)).toBe(outra.ana)
+  })
+})
+
+describe('pontos da casa', () => {
+  it('"sua parte" é só o que VOCÊ fez; o total é a casa inteira — e a outra casa não entra', async () => {
+    const { ana, bia, caio } = await casaComTres()
+    const outra = await casaComTres()
+    const banheiro = await comoApp(ana, (db) =>
+      criaTarefa(db, tarefa({ peso: 'pesado', modo: 'rodizio', responsavelId: ana, bonusDetestada: true })),
+    )
+    const cama = await comoApp(ana, (db) => criaTarefa(db, tarefa({ titulo: 'Cama', peso: 'leve' })))
+    const deLa = await comoApp(outra.ana, (db) => criaTarefa(db, tarefa({ titulo: 'Louça de lá', peso: 'pesado' })))
+
+    await comoApp(ana, (db) => concluiTarefa(db, banheiro.id)) // 5: pesado + bônus
+    await comoApp(bia, (db) => concluiTarefa(db, cama.id)) //     1
+    await comoApp(bia, (db) => concluiTarefa(db, cama.id)) //     1
+    await comoApp(outra.ana, (db) => concluiTarefa(db, deLa.id)) // 3, em outra casa
+
+    expect(await comoApp(ana, (db) => lePontosDaCasa(db))).toEqual({ suaParte: 5, total: 7 })
+    expect(await comoApp(bia, (db) => lePontosDaCasa(db))).toEqual({ suaParte: 2, total: 7 })
+    expect(await comoApp(caio, (db) => lePontosDaCasa(db))).toEqual({ suaParte: 0, total: 7 })
+    expect(await comoApp(outra.ana, (db) => lePontosDaCasa(db))).toEqual({ suaParte: 3, total: 3 })
+  })
+
+  it('a resposta tem os dois números e NADA além — breakdown por pessoa não passa (ADR-0010)', async () => {
+    const { ana } = await casaComTres()
+
+    const pontos = await comoApp(ana, (db) => lePontosDaCasa(db))
+
+    expect(Object.keys(pontosDaCasaSchema.parse(pontos)).sort()).toEqual(['suaParte', 'total'])
+    expect(() => pontosDaCasaSchema.parse({ ...pontos, porMorador: { [ana]: 0 } })).toThrow()
+  })
+
+  it('sem casa, as duas somas são zero', async () => {
+    const solto = await novaConta('Solto')
+    expect(await comoApp(solto, (db) => lePontosDaCasa(db))).toEqual({ suaParte: 0, total: 0 })
   })
 })

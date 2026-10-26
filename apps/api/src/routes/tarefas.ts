@@ -6,19 +6,20 @@ import {
   criarTarefaSchema,
   editarTarefaSchema,
   listaDeTarefasSchema,
+  pontosDaCasaSchema,
   tarefaSchema,
   uuidSchema,
 } from '@casa/contracts'
 import { exigeIdentidade } from '../plugins/exigeIdentidade.js'
-import { concluiTarefa } from '../tarefas/conclusao.js'
+import { concluiTarefa, lePontosDaCasa } from '../tarefas/conclusao.js'
 import { apagaTarefa, criaTarefa, editaTarefa, listaTarefas } from '../tarefas/servico.js'
 import { valida } from './valida.js'
 
 const parametrosDeTarefa = z.object({ id: uuidSchema })
 
 /**
- * Tarefas da casa (Épico 2): listar (story 5), o CRUD (story 4) e concluir
- * (story 6).
+ * Tarefas da casa (Épico 2): listar (story 5), o CRUD (story 4), concluir
+ * (story 6) e os pontos que as conclusões somam (story 7).
  *
  * Nenhum handler confere se a tarefa é da casa de quem pede, nem se o
  * responsável é morador dela: quem decide é a policy (ADR-0002), e o serviço
@@ -61,5 +62,16 @@ export const rotasTarefas: FastifyPluginAsync = async (app) => {
     valida(concluirTarefaSchema, request.body ?? {})
     const conclusao = await request.withUser((db) => concluiTarefa(db, id))
     return reply.status(201).send(conclusaoSchema.parse(conclusao))
+  })
+
+  /**
+   * Os pontos (story 7). Mora aqui e não em `routes/casas.ts` apesar do
+   * caminho: é leitura de `conclusoes`, e o serviço é o mesmo de concluir.
+   * `pontosDaCasaSchema` é `strictObject` — um campo a mais na resposta, como
+   * um breakdown por pessoa, derruba o parse em vez de sair para o app.
+   */
+  app.get('/casa/pontos', async (request, reply) => {
+    const pontos = await request.withUser((db) => lePontosDaCasa(db))
+    return reply.send(pontosDaCasaSchema.parse(pontos))
   })
 }

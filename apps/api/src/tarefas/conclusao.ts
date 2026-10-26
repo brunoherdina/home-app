@@ -1,5 +1,5 @@
-import { asc, eq } from 'drizzle-orm'
-import { pontosDaTarefa, type Conclusao } from '@casa/contracts'
+import { asc, eq, sum } from 'drizzle-orm'
+import { pontosDaTarefa, type Conclusao, type PontosDaCasa } from '@casa/contracts'
 import type { CasaDb } from '../plugins/withUser.js'
 import { moradorDaTransacao } from '../db/identidade.js'
 import { conclusoes, moradores, tarefas } from '../db/schema.js'
@@ -76,4 +76,27 @@ export async function concluiTarefa(db: CasaDb, tarefaId: string): Promise<Concl
   }
 
   return { ...conclusao, concluidaEm: conclusao.concluidaEm.toISOString() }
+}
+
+/**
+ * `GET /api/casa/pontos` — as DUAS leituras que `conclusoes` serve, e só elas:
+ * a soma das linhas de quem pergunta ("sua parte") e a soma da casa.
+ *
+ * Nenhuma soma por morador além da própria, nenhum agrupamento, nenhuma
+ * ordenação: "quanto o Caio fez" não tem caminho de leitura, nem para o
+ * próprio app (ADR-0010). A soma da casa não precisa de `where` — a policy de
+ * SELECT já escopa por `casa_atual()`. Sem casa, as duas são zero.
+ *
+ * `sum` chega do driver como texto (numeric) ou `null` sem linhas.
+ */
+export async function lePontosDaCasa(db: CasaDb): Promise<PontosDaCasa> {
+  const [[minha], [casa]] = await Promise.all([
+    db
+      .select({ pontos: sum(conclusoes.pontos) })
+      .from(conclusoes)
+      .where(eq(conclusoes.moradorId, moradorDaTransacao())),
+    db.select({ pontos: sum(conclusoes.pontos) }).from(conclusoes),
+  ])
+
+  return { suaParte: Number(minha?.pontos ?? 0), total: Number(casa?.pontos ?? 0) }
 }
