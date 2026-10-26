@@ -76,6 +76,9 @@ export default function RootLayout() {
         {/* As abas (Tarefas, Casa) têm o próprio cabeçalho. Sem gesto de voltar
             pelo mesmo motivo de antes: atrás delas só há o fluxo da Fase 0. */}
         <Stack.Screen name="(abas)" options={{ headerShown: false, gestureEnabled: false }} />
+        {/* Criar e editar tarefa abrem POR CIMA das abas e voltam para elas. */}
+        <Stack.Screen name="tarefa/nova" options={{ title: 'Nova tarefa', presentation: 'modal' }} />
+        <Stack.Screen name="tarefa/[id]" options={{ title: 'Tarefa', presentation: 'modal' }} />
       </Stack>
     </QueryClientProvider>
   )

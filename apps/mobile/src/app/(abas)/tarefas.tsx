@@ -7,6 +7,7 @@ import { SemConexao } from '../../componentes/SemConexao'
 import { CartaoDeTarefa } from '../../componentes/tarefa/CartaoDeTarefa'
 import { pontosPorExtenso } from '../../componentes/tarefa/rotulos'
 import { Aviso } from '../../design-system/componentes/Aviso'
+import { BotaoFlutuante } from '../../design-system/componentes/BotaoFlutuante'
 import { Segmentos } from '../../design-system/componentes/Segmentos'
 import { cores, espacos, raios, textos } from '../../design-system/tokens'
 import { buscaCasa, chaveDaCasa } from '../../lib/api/casa'
@@ -40,7 +41,7 @@ function filtra(tarefas: readonly Tarefa[], filtro: Filtro, euId: string): Taref
 }
 
 const VAZIO: Record<Filtro, string> = {
-  todas: 'Nenhuma tarefa por aqui ainda.',
+  todas: 'Nenhuma tarefa por aqui ainda. Toque em + para criar a primeira.',
   minhas: 'Nada com você agora.',
   livres: 'Nenhuma tarefa livre — todas têm alguém.',
 }
@@ -172,6 +173,7 @@ export default function Tarefas() {
           />
         )}
       />
+      <BotaoFlutuante rotulo="Nova tarefa" aoTocar={() => router.push('/tarefa/nova')} />
     </View>
   )
 }
