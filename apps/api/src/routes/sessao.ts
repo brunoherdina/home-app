@@ -1,16 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { z } from 'zod'
 import { refreshSchema } from '@casa/contracts'
 import { auth } from '../auth/instancia.js'
-import { PayloadInvalidoError } from '../erros.js'
 import { exigeIdentidade } from '../plugins/exigeIdentidade.js'
-
-/** ADR-0009: o mesmo schema que valida o formulário no app valida o payload aqui. */
-function valida<T extends z.ZodType>(schema: T, corpo: unknown): z.infer<T> {
-  const resultado = schema.safeParse(corpo)
-  if (!resultado.success) throw new PayloadInvalidoError(z.treeifyError(resultado.error))
-  return resultado.data
-}
+import { valida } from './valida.js'
 
 /**
  * `POST /api/auth/logout` — a única rota de `/api/auth` que exige identidade.

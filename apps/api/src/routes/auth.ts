@@ -1,21 +1,14 @@
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
-import { z } from 'zod'
 import {
   loginSchema,
   parDeTokensSchema,
   refreshSchema,
   registroSchema,
 } from '@casa/contracts'
-import { ErroHttp, PayloadInvalidoError, SessaoInvalidaError } from '../erros.js'
+import { ErroHttp, SessaoInvalidaError } from '../erros.js'
 import { auth } from '../auth/instancia.js'
-
-/** ADR-0009: o mesmo schema que valida o formulário no app valida o payload aqui. */
-function valida<T extends z.ZodType>(schema: T, corpo: unknown): z.infer<T> {
-  const resultado = schema.safeParse(corpo)
-  if (!resultado.success) throw new PayloadInvalidoError(z.treeifyError(resultado.error))
-  return resultado.data
-}
+import { valida } from './valida.js'
 
 /**
  * `/api/auth` — as três rotas que acontecem ANTES de existir identidade.

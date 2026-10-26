@@ -6,6 +6,21 @@ import { casas, moradores, tarefas } from '../db/schema.js'
 import { ErroHttp } from '../erros.js'
 import { TEMPLATES } from './templates.js'
 
+/**
+ * A tarefa como o contrato a devolve (`tarefaSchema`) — a MESMA projeção em
+ * todo lugar que lê tarefa (aqui e em `tarefas/servico.ts`), para a resposta
+ * de `GET /api/casa` e a de `POST /api/tarefas` não divergirem por um campo.
+ * Sem `casaId` (a resposta já é da sua casa) e sem `criadoEm` (nada exibe).
+ */
+export const colunasDaTarefa = {
+  id: tarefas.id,
+  titulo: tarefas.titulo,
+  peso: tarefas.peso,
+  modo: tarefas.modo,
+  responsavelId: tarefas.responsavelId,
+  bonusDetestada: tarefas.bonusDetestada,
+} as const
+
 /** SQLSTATEs que `cria_casa()` levanta (ver 0003_casa_e_tarefas.sql). */
 const JA_TEM_CASA = 'C0001'
 
@@ -98,17 +113,7 @@ export async function leCasaPovoada(db: CasaDb): Promise<CasaPovoada | null> {
       .select({ id: moradores.id, apelido: moradores.apelido, cor: moradores.cor })
       .from(moradores)
       .orderBy(asc(moradores.criadoEm)),
-    db
-      .select({
-        id: tarefas.id,
-        titulo: tarefas.titulo,
-        peso: tarefas.peso,
-        modo: tarefas.modo,
-        responsavelId: tarefas.responsavelId,
-        bonusDetestada: tarefas.bonusDetestada,
-      })
-      .from(tarefas)
-      .orderBy(asc(tarefas.criadoEm)),
+    db.select(colunasDaTarefa).from(tarefas).orderBy(asc(tarefas.criadoEm)),
   ])
 
   return { casa, moradores: moradoresDaCasa, tarefas: tarefasDaCasa }

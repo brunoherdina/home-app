@@ -1,6 +1,5 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
-import { z } from 'zod'
 import {
   casaPovoadaSchema,
   casaSchema,
@@ -10,15 +9,9 @@ import {
 } from '@casa/contracts'
 import { criaConvite, entraComConvite } from '../casa/convite.js'
 import { criaCasa, leCasaPovoada } from '../casa/servico.js'
-import { ErroHttp, PayloadInvalidoError } from '../erros.js'
+import { ErroHttp } from '../erros.js'
 import { exigeIdentidade } from '../plugins/exigeIdentidade.js'
-
-/** ADR-0009: o mesmo schema que valida o formulário no app valida o payload aqui. */
-function valida<T extends z.ZodType>(schema: T, corpo: unknown): z.infer<T> {
-  const resultado = schema.safeParse(corpo)
-  if (!resultado.success) throw new PayloadInvalidoError(z.treeifyError(resultado.error))
-  return resultado.data
-}
+import { valida } from './valida.js'
 
 /**
  * A cota é por conta. `exigeIdentidade` já rodou (é `onRequest`, e o rate limit

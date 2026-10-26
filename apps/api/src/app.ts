@@ -6,6 +6,7 @@ import { rotaSaude } from './routes/saude.js'
 import { rotasAuth } from './routes/auth.js'
 import { rotasCasa } from './routes/casas.js'
 import { rotasSessao } from './routes/sessao.js'
+import { rotasTarefas } from './routes/tarefas.js'
 import { ErroHttp, PayloadInvalidoError } from './erros.js'
 import type { Erro } from '@casa/contracts'
 
@@ -53,6 +54,7 @@ export async function criaApp() {
   await app.register(rotasAuth, { prefix: '/api' })
   await app.register(rotasSessao, { prefix: '/api' })
   await app.register(rotasCasa, { prefix: '/api' })
+  await app.register(rotasTarefas, { prefix: '/api' })
 
   return app
 }
