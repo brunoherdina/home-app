@@ -1,5 +1,7 @@
-import type { ReactNode } from 'react'
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useState, type ReactNode } from 'react'
+import { StyleSheet, Text, View } from 'react-native'
+import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { cores, espacos, textos } from '../tokens'
 
 type Props = {
@@ -12,34 +14,61 @@ type Props = {
 }
 
 /**
- * Moldura de toda tela de formulário da Fase 0.
+ * Folga entre o rodapé e o campo focado. Cobre a linha de erro reservada que
+ * cada `Campo` tem abaixo do input — sem ela, o erro do campo focado ficaria
+ * escondido atrás do botão.
+ */
+const FOLGA_ACIMA_DO_RODAPE = espacos.xl
+
+/**
+ * Moldura de toda tela de formulário.
  *
- * Existe para o teclado não ser um problema resolvido de três jeitos
- * diferentes: em iOS o `padding` empurra o conteúdo, em Android o
- * `windowSoftInputMode` já redimensiona a janela e um segundo ajuste
- * duplicaria o deslocamento. Com uma moldura só, o comportamento é decidido
- * aqui e as telas não repetem a decisão.
+ * Existe para o teclado ser resolvido num lugar só. O Android não resolve
+ * sozinho: o RN 0.86 desenha de borda a borda (edge-to-edge), e nesse modo o
+ * `adjustResize` do `windowSoftInputMode` não encolhe mais a janela — o teclado
+ * passa POR CIMA do formulário. Quem compensa é o react-native-keyboard-controller,
+ * que lê o teclado igual nas duas plataformas:
  *
- * O rodapé fica FORA do ScrollView de propósito: a ação principal da Fase 0
- * não pode depender de a pessoa rolar até o fim para descobrir que existe.
+ * - `KeyboardAwareScrollView` rola até o campo focado ficar acima do teclado E
+ *   do rodapé (`bottomOffset` = a parte do rodapé que fica visível + folga);
+ * - `KeyboardStickyView` sobe o rodapé junto com o teclado.
+ *
+ * O rodapé fica FORA da rolagem de propósito: a ação principal não pode
+ * depender de a pessoa rolar até o fim para descobrir que existe. Pelo mesmo
+ * desenho de borda a borda, a barra de navegação do sistema cobre o fundo da
+ * tela — daí o recuo `insets.bottom` no rodapé. Com o teclado aberto esse recuo
+ * fica atrás do teclado (`offset.opened`), senão o botão flutuaria longe dele.
  */
 export function Tela({ titulo, legenda, children, rodape }: Props) {
+  const insets = useSafeAreaInsets()
+  const [alturaDoRodape, setAlturaDoRodape] = useState(0)
+
   return (
-    <KeyboardAvoidingView
-      style={estilos.raiz}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={estilos.conteudo}
+    <View style={estilos.raiz}>
+      <KeyboardAwareScrollView
+        bottomOffset={Math.max(alturaDoRodape - insets.bottom, 0) + FOLGA_ACIMA_DO_RODAPE}
+        contentContainerStyle={[
+          estilos.conteudo,
+          rodape ? null : { paddingBottom: espacos.lg + insets.bottom },
+        ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
         <Text style={estilos.titulo}>{titulo}</Text>
         {legenda ? <Text style={estilos.legenda}>{legenda}</Text> : null}
         <View style={estilos.corpo}>{children}</View>
-      </ScrollView>
-      {rodape ? <View style={estilos.rodape}>{rodape}</View> : null}
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+      {rodape ? (
+        <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
+          <View
+            onLayout={(evento) => setAlturaDoRodape(evento.nativeEvent.layout.height)}
+            style={[estilos.rodape, { paddingBottom: espacos.lg + insets.bottom }]}
+          >
+            {rodape}
+          </View>
+        </KeyboardStickyView>
+      ) : null}
+    </View>
   )
 }
 
@@ -50,7 +79,7 @@ const estilos = StyleSheet.create({
   legenda: { ...textos.legenda, color: cores.cinza },
   corpo: { marginTop: espacos.lg, gap: espacos.md },
   rodape: {
-    padding: espacos.lg,
+    paddingHorizontal: espacos.lg,
     paddingTop: espacos.sm,
     gap: espacos.sm,
     backgroundColor: cores.papel,

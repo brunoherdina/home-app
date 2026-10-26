@@ -3,6 +3,7 @@ import { Stack, router } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect } from 'react'
+import { KeyboardProvider } from 'react-native-keyboard-controller'
 import { cores } from '../design-system/tokens'
 import { ErroDaApi } from '../lib/api/cliente'
 import { sessao } from '../lib/sessao'
@@ -54,34 +55,38 @@ export default function RootLayout() {
   }), [])
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: cores.papel },
-          headerTintColor: cores.tinta,
-          headerShadowVisible: false,
-          contentStyle: { backgroundColor: cores.papel },
-        }}
-      >
-        {/* O boot é invisível: fica atrás do splash e só redireciona. */}
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="entrar" options={{ headerShown: false }} />
-        <Stack.Screen name="criar-conta" options={{ title: 'Criar conta' }} />
-        {/* Sem voltar: a conta já existe, e voltar cairia num formulário de
-            cadastro que só daria 409. A casa é o próximo passo obrigatório. */}
-        <Stack.Screen name="nova-casa" options={{ headerShown: false, gestureEnabled: false }} />
-        {/* COM voltar, ao contrário da de cima: quem chegou aqui escolheu o
-            ramo do convite e pode ter escolhido errado — voltar cai em
-            nova-casa, que é um destino legítimo. */}
-        <Stack.Screen name="entrar-na-casa" options={{ title: 'Entrar numa casa' }} />
-        {/* As abas (Tarefas, Casa) têm o próprio cabeçalho. Sem gesto de voltar
-            pelo mesmo motivo de antes: atrás delas só há o fluxo da Fase 0. */}
-        <Stack.Screen name="(abas)" options={{ headerShown: false, gestureEnabled: false }} />
-        {/* Criar e editar tarefa abrem POR CIMA das abas e voltam para elas. */}
-        <Stack.Screen name="tarefa/nova" options={{ title: 'Nova tarefa', presentation: 'modal' }} />
-        <Stack.Screen name="tarefa/[id]" options={{ title: 'Tarefa', presentation: 'modal' }} />
-      </Stack>
-    </QueryClientProvider>
+    // O provider do teclado escuta o IME para toda a árvore; quem o usa é a
+    // `Tela` (design-system/componentes/Tela.tsx), que explica por quê.
+    <KeyboardProvider>
+      <QueryClientProvider client={queryClient}>
+        <StatusBar style="dark" />
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: cores.papel },
+            headerTintColor: cores.tinta,
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: cores.papel },
+          }}
+        >
+          {/* O boot é invisível: fica atrás do splash e só redireciona. */}
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="entrar" options={{ headerShown: false }} />
+          <Stack.Screen name="criar-conta" options={{ title: 'Criar conta' }} />
+          {/* Sem voltar: a conta já existe, e voltar cairia num formulário de
+              cadastro que só daria 409. A casa é o próximo passo obrigatório. */}
+          <Stack.Screen name="nova-casa" options={{ headerShown: false, gestureEnabled: false }} />
+          {/* COM voltar, ao contrário da de cima: quem chegou aqui escolheu o
+              ramo do convite e pode ter escolhido errado — voltar cai em
+              nova-casa, que é um destino legítimo. */}
+          <Stack.Screen name="entrar-na-casa" options={{ title: 'Entrar numa casa' }} />
+          {/* As abas (Tarefas, Casa) têm o próprio cabeçalho. Sem gesto de voltar
+              pelo mesmo motivo de antes: atrás delas só há o fluxo da Fase 0. */}
+          <Stack.Screen name="(abas)" options={{ headerShown: false, gestureEnabled: false }} />
+          {/* Criar e editar tarefa abrem POR CIMA das abas e voltam para elas. */}
+          <Stack.Screen name="tarefa/nova" options={{ title: 'Nova tarefa', presentation: 'modal' }} />
+          <Stack.Screen name="tarefa/[id]" options={{ title: 'Tarefa', presentation: 'modal' }} />
+        </Stack>
+      </QueryClientProvider>
+    </KeyboardProvider>
   )
 }
