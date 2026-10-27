@@ -46,6 +46,21 @@ const envSchema = z.object({
    * e localhost dentro do container não é o localhost do host.
    */
   HOST: z.string().default('0.0.0.0'),
+  /**
+   * De que endereços vem o NOSSO proxy — IP, CIDR ou nome do `proxy-addr`
+   * (`loopback`, `uniquelocal`), separados por vírgula. Em produção é
+   * `uniquelocal`: o nginx do vps-edge fala com a API pela rede Docker, e só
+   * redes Docker alcançam o container. Sem isso, `request.ip` é o IP do proxy
+   * para todo mundo, e o rate limit de login e cadastro vira um balde só — a
+   * primeira casa que erra a senha cinco vezes trava o login de todas.
+   *
+   * Vazio (desligado) por padrão: em desenvolvimento o celular chega direto,
+   * pela LAN, e um `X-Forwarded-For` inventado ganharia um balde novo a cada
+   * request. Por endereço e não por contagem de saltos: o Fastify 5.12 recusa
+   * contagem (não dá para saber se quem está do outro lado do socket é mesmo
+   * o proxy).
+   */
+  PROXY_CONFIAVEL: z.string().default(''),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 })
 

@@ -10,8 +10,16 @@ import { rotasTarefas } from './routes/tarefas.js'
 import { ErroHttp, PayloadInvalidoError } from './erros.js'
 import type { Erro } from '@casa/contracts'
 
-export async function criaApp() {
+type OpcoesDoApp = {
+  /** Ver `PROXY_CONFIAVEL` no config. Parâmetro para o teste provar os dois lados. */
+  proxyConfiavel?: string
+}
+
+export async function criaApp({ proxyConfiavel = config.PROXY_CONFIAVEL }: OpcoesDoApp = {}) {
   const app = Fastify({
+    // Por endereço, nunca `true`: o `X-Forwarded-For` só é lido quando o socket
+    // vem do proxy, e só a entrada que ELE anotou vale como IP do cliente.
+    trustProxy: proxyConfiavel || false,
     logger: {
       level: config.NODE_ENV === 'production' ? 'info' : 'debug',
       // Sem body nem header no log: token e payload de dado sensível não viram
