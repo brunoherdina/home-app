@@ -140,19 +140,19 @@ Duas coisas ficam **congeladas no APK** no momento do build, e as duas moram no
 `eas.json`:
 
 * `EXPO_PUBLIC_API_URL` — o app compilado não tem Metro para adivinhar o host,
-  então o endereço da API entra fixo. Hoje é o IP da máquina na LAN. **Se o IP
-  mudar, o APK para de funcionar** e precisa de build novo; vale fixar o IP no
-  roteador.
+  então o endereço da API entra fixo: `https://casa.prumoz.com.br`, a API de
+  produção (ADR-0014), em `preview` e em `production`. O APK funciona em
+  qualquer rede, e quem testa cria conta no banco de produção.
 * o canal de updates (`preview`) — irrelevante até o Épico 6, que é quando OTA
   liga.
 
-> [!warning] O APK de preview aceita HTTP em claro
+> [!warning] HTTP em claro só no perfil `development`
 > Android 9+ bloqueia cleartext, e build de release não herda a exceção do modo
-> debug — sem ela o app instala, abre e falha em toda request com erro de rede
-> genérico. `app.config.ts` liga `usesCleartextTraffic` para todo perfil
-> **menos** `production`. Quando existir build de produção, a API estará atrás
-> de TLS (ADR-0001) e a permissão não deve ir junto: cleartext em produção
-> transforma qualquer Wi-Fi hostil em leitura de token.
+> debug. `app.config.ts` liga `usesCleartextTraffic` só para `development` (o
+> dev client, que fala com a API na LAN). `preview` e `production` falam HTTPS
+> e ficam sem a permissão: cleartext num APK que anda por aí transforma
+> qualquer Wi-Fi hostil em leitura de token. APK de preview contra a API local
+> exige trocar o perfil — não religar a permissão no `preview`.
 
 `app.config.ts` existe só para isso: o Expo lê `app.json` primeiro e passa o
 resultado para a função, que acrescenta o que depende do perfil de build.

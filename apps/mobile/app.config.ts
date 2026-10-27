@@ -12,7 +12,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   // expo run) é undefined, e o padrão precisa ser o permissivo — senão o
   // desenvolvimento com a API na LAN para de funcionar.
   const perfil = process.env.EAS_BUILD_PROFILE ?? 'development'
-  const ehProducao = perfil === 'production'
+  const falaComApiNaLan = perfil === 'development'
 
   return {
     ...config,
@@ -26,18 +26,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           android: {
             /**
              * Android 9+ bloqueia HTTP em claro por padrão, e o build de release
-             * NÃO herda a exceção que o modo debug tem. Sem isto, o APK de
-             * preview instala, abre e falha em toda request contra
-             * `http://192.168.68.102:3333` — com um erro de rede genérico, que
-             * é exatamente o sintoma que manda procurar no lugar errado.
+             * NÃO herda a exceção que o modo debug tem. Quem precisa dela é só
+             * quem fala com a API na LAN (`http://<ip>:3333`): o expo start e o
+             * dev client (perfil `development`). Sem ela, esse build instala,
+             * abre e falha em toda request com um erro de rede genérico — o
+             * sintoma que manda procurar no lugar errado.
              *
-             * Ligado só fora de `production` de propósito. A API de casa é HTTP
-             * simples na LAN; o dia em que existir build de produção, ela estará
-             * atrás de TLS (ADR-0014, nginx do vps-edge) e esta permissão não deve ir
-             * junto — cleartext habilitado em produção transforma qualquer Wi-Fi
-             * hostil em leitura de token.
+             * `preview` e `production` falam com https://casa.prumoz.com.br
+             * (ADR-0014) e ficam SEM a permissão: cleartext ligado num APK que
+             * anda por aí transforma qualquer Wi-Fi hostil em leitura de token.
              */
-            usesCleartextTraffic: !ehProducao,
+            usesCleartextTraffic: falaComApiNaLan,
           },
         },
       ],
