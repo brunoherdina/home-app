@@ -1,0 +1,93 @@
+# Casa — produção na VPS do improvisa-ai (Épico 0b, ADR-0014).
+#
+# Por cima do compose base, nunca sozinho. Quem chama é o deploy
+# (`infra/scripts/deploy-vps.sh`); à mão, de /opt/casa:
+#
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml \
+#     --env-file infra/.env <comando>
+#
+# O que muda em relação ao base:
+#
+# - nenhuma porta publicada (`!reset`): porta publicada pelo Docker passa por
+#   cima do UFW da VPS. Quem escuta na internet é só o nginx do vps-edge;
+# - sem profile: tudo sobe junto;
+# - a API entra na rede `edge` com o alias `casa-api`, que é por onde o proxy a
+#   acha. O Postgres fica FORA da `edge` — o site da Prumoz e o próprio nginx
+#   estão nela e não têm o que fazer no banco;
+# - `migrate` roda antes de api e worker, e é o ÚNICO container que recebe a
+#   credencial de `casa_owner` (ADR-0002). O `depends_on` garante a ordem num
+#   `up` do zero, mas NÃO protege um deploy: o `up` recria api e worker antes de
+#   esperar a migration, e uma migration que falha deixa a API fora do ar
+#   (medido em 2026-10-26). Por isso o deploy roda o `migrate` sozinho primeiro
+#   e só troca a API se ele passar — deploy é pelo script, não por `up`;
+# - limite de memória em todos: a VPS é dividida com o improvisa, cujo worker
+#   de áudio não tem limite. Sem teto, quem morre no OOM pode ser o nosso banco.
+#   Tetos com ~2× o medido (ver memória "consumo da API", 2026-10-26).
+
+x-logs: &logs
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  postgres:
+    ports: !reset []
+    mem_limit: 512m
+    logging: *logs
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    image: casa-api:prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MIGRATION_DATABASE_URL: postgres://casa_owner:${CASA_OWNER_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    command: ["node", "--import", "tsx", "src/db/migrate.ts"]
+    restart: "no"
+    mem_limit: 256m
+    logging: *logs
+
+  api:
+    profiles: !reset []
+    image: casa-api:prod
+    ports: !reset []
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      # O nginx do vps-edge fala com a API pela rede Docker (faixa privada).
+      # Ver PROXY_CONFIAVEL em apps/api/src/config.ts.
+      PROXY_CONFIAVEL: uniquelocal
+    networks:
+      default: {}
+      edge:
+        aliases: [casa-api]
+    healthcheck:
+      # /api/saude passa pelo banco: healthy = API de pé E conectada como casa_app.
+      test: ["CMD", "wget", "-qO-", "-T", "5", "http://127.0.0.1:3333/api/saude"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
+    mem_limit: 512m
+    logging: *logs
+
+  worker:
+    profiles: !reset []
+    image: casa-api:prod
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+    mem_limit: 384m
+    logging: *logs
+
+networks:
+  # Criada pelo vps-edge (`scripts/deploy.sh` de lá). Ausente = o compose não sobe.
+  edge:
+    external: true
