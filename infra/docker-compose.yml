@@ -1,13 +1,14 @@
-# Casa — compose de desenvolvimento local (Épico 0a).
+# Casa — compose base: desenvolvimento local (Épico 0a) e produção (Épico 0b).
 #
-# Este é o MESMO arquivo que serve produção (Épico 0b): lá muda o env e entra o
-# serviço `caddy`. As duas diferenças deliberadas do 0a estão marcadas com
-# `# 0a-only` — ambas precisam sumir antes do deploy.
+# Produção é este arquivo + `docker-compose.prod.yml` por cima (ADR-0014): o
+# override zera as duas diferenças marcadas com `# 0a-only` (`ports: !reset`),
+# tira o profile, põe a API na rede `edge` do proxy da VPS e acrescenta o job de
+# migration. Não existe Caddy: TLS e portas 80/443 são do vps-edge.
 #
 # `api` e `worker` ficam no profile `app`. Sem ele, `docker compose up` sobe só o
 # Postgres — que é o fluxo de desenvolvimento (a API roda no host com hot reload
 # e o Expo alcança ela pela rede). Com `--profile app`, sobe a paridade com
-# produção. No 0b o profile some: lá tudo sobe junto.
+# produção.
 
 name: casa
 
@@ -28,7 +29,7 @@ services:
     ports:
       # 0a-only: preso ao loopback para o drizzle-kit e os testes de negação
       # alcançarem o banco a partir do host. Em produção o Postgres NÃO publica
-      # porta — quem escuta na internet é só o Caddy.
+      # porta — quem escuta na internet é só o nginx do vps-edge.
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data # volume nomeado: bind mount quebra permissão por UID
@@ -53,12 +54,14 @@ services:
       # casa_app, sempre. A credencial de casa_owner não entra neste container:
       # migration é passo de deploy, não algo que a API faz ao subir (ADR-0002).
       DATABASE_URL: postgres://casa_app:${CASA_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AUTH_DATABASE_URL: postgres://casa_auth:${CASA_AUTH_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
       PORT: 3333
       HOST: 0.0.0.0
       NODE_ENV: ${NODE_ENV:-development}
     ports:
-      # 0a-only: em produção quem publica porta é o Caddy; a API fica só na rede
-      # interna do compose.
+      # 0a-only: em produção quem publica porta é o nginx do vps-edge; a API fica
+      # só nas redes Docker (a do compose e a `edge`).
       - "127.0.0.1:${PORT:-3333}:3333"
 
   worker:
@@ -71,9 +74,13 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # O worker importa o mesmo `config` da API, que exige as três.
       DATABASE_URL: postgres://casa_app:${CASA_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AUTH_DATABASE_URL: postgres://casa_auth:${CASA_AUTH_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
       NODE_ENV: ${NODE_ENV:-development}
-    command: ["npx", "tsx", "worker/index.ts"]
+    # Mesmo motivo do CMD do Dockerfile: node direto, sem npx no meio.
+    command: ["node", "--import", "tsx", "worker/index.ts"]
 
 volumes:
   postgres-data:
