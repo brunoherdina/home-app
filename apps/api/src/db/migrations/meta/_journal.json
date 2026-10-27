@@ -15,6 +15,48 @@
       "when": 1788030623947,
       "tag": "0001_identidade_e_sessoes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788583588140,
+      "tag": "0002_registro",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788641767011,
+      "tag": "0003_casa_e_tarefas",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788647848196,
+      "tag": "0004_logout",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788661325335,
+      "tag": "0005_convite",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788746252517,
+      "tag": "0006_tarefas_divisao",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788746367547,
+      "tag": "0007_conclusoes",
+      "breakpoints": true
     }
   ]
 }

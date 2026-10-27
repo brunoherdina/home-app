@@ -71,14 +71,31 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
 ### Épico 0b — Produção
 
 - **Meta:** a API acessível de fora, com os dados sobrevivendo a um acidente.
-- **Entregáveis:** provedor de VPS escolhido; compose em produção; **Caddy + TLS**; migration como job
-  de deploy (role owner, nunca o processo da API); `pg_dump` agendado com **destino offsite**; runbook
-  de restore; CI mínimo; **provedor de envio de e-mail** + domínio, que destrava a verificação de
-  e-mail gerada no Épico 1.
-- **DoD:** API responde com TLS por domínio próprio; Postgres **sem porta publicada** no host;
-  **restore do backup executado com sucesso ao menos uma vez**; nenhum segredo no repositório nem no
-  bundle do app.
-- **Depende de:** 0a + **decisão nº 5** (provedor + backup offsite).
+- **Entregáveis:** provedor de VPS escolhido (**ADR-0014**: a VPS do `improvisa-ai`); compose em
+  produção (`infra/docker-compose.prod.yml` por cima do base); **entrada pelo nginx do `vps-edge` + TLS
+  do certbot do host** em `casa.prumoz.com.br` (substitui o Caddy: as portas 80/443 da VPS já têm dono);
+  migration como job de deploy (role owner, nunca o processo da API, e **antes** de trocar a API);
+  `pg_dump` agendado; runbook de restore; deploy por push (workflow); CI mínimo (`npm run verify`
+  antes do deploy); **provedor de envio de e-mail**,
+  que destrava a verificação de e-mail gerada no Épico 1.
+- **DoD:** API responde com TLS em `casa.prumoz.com.br`; Postgres e API **sem porta publicada** no host;
+  **restore do backup executado com sucesso ao menos uma vez** (`infra/scripts/restore-teste.sh`);
+  rate limit por pessoa atrás do proxy (`PROXY_CONFIAVEL`); nenhum segredo no repositório nem no bundle
+  do app.
+- **Backup offsite: fora do DoD por decisão (2026-10-26), como risco aceito.** O dump fica só na VPS;
+  perder a VPS é perder os dados de todas as casas. Rever antes de abrir para fora do círculo de teste
+  (ADR-0014).
+- **Depende de:** 0a + decisão nº 5 — **fechada** pelo ADR-0014 em 2026-10-26.
+- **Status (2026-10-27):** API no ar em `https://casa.prumoz.com.br/api/`.
+  - Feito: TLS do certbot; nada do Casa publica porta; deploy pelo `infra/scripts/deploy-vps.sh`.
+  - Backup: cron diário com o primeiro dump; restore provado pelo `restore-teste.sh` na VPS.
+  - Rate limit: a API enxerga o IP real atrás do proxy (provado com `X-Forwarded-For` falso).
+  - APK de preview apontando para produção.
+  - Faltam:
+    - **provedor de e-mail**;
+    - **gate de `npm run verify` antes do deploy**;
+    - **segredos do workflow** no GitHub (`VPS_HOST`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`). Sem eles, o deploy
+      pela `main` falha; até lá, o deploy é à mão.
 - **Prazo real:** antes do convite do **Épico 2** — é quando a segunda pessoa precisa alcançar a API.
 - **Skills:** `casa-infra-deploy`, `casa-tech-writer` (runbook).
 
@@ -97,7 +114,7 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
   - **Apple Sign In → Épico 6.** Exige conta Apple Developer paga e build iOS; não roda em Expo Go. A
     coluna `apple_sub` nasce no schema agora para não virar migration depois.
   - **Envio do e-mail de verificação → Épico 0b.** O token de 24 h é gerado e gravado no Épico 1; o
-    transporte é log no console até existir domínio e provedor (decisão nº 5).
+    transporte é log no console até existir provedor de e-mail (o domínio existe desde o ADR-0014).
   - **Ramo "tem convite" da Fase 0 → Épico 2.** Aceitar convite exige URL pública e deep link, que são
     0b + Épico 2. O Épico 1 entrega o **ramo do criador** ponta a ponta e só o *schema* do convite.
 - **DoD:** signup → cria casa → **casa povoada pelo template**; RLS impede ver dados de outra casa
@@ -142,7 +159,15 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
   adicionar; **convite** (WhatsApp / QR / código curto, "sem labirinto") **e o ramo *tem convite* da
   Fase 0** — abrir o convite, ver a casa e quem já entrou, escolher apelido + cor e entrar (herdado do
   Épico 1 em 2026-08-29: aceitar convite exige URL pública, que só existe depois do 0b).
-- **Pré-requisito de infra:** o convite exige URL pública → **o Épico 0b precisa estar fechado aqui**.
+- **Pré-requisito de infra:** o convite por **link/QR** exige URL pública → **o Épico 0b precisa estar
+  fechado aqui**.
+
+> [!note] Convite por código curto antecipado (2026-09-06)
+> A fatia **código curto digitado à mão** foi entregue junto do Épico 1, fora de ordem e de propósito:
+> ela é a única parte do convite que **não** depende de URL pública nem de deep link, e sem ela o app
+> testável do Épico 1 só serve para uma pessoa — duas contas caem em duas casas diferentes.
+> Entregue: `POST /api/convites`, `POST /api/casas/entrar`, `entra_na_casa()` (migration 0005) e o
+> ramo *tem convite* da Fase 0. **Continua no Épico 2:** link, QR, e cancelar convite.
 - **DoD:** dois moradores na casa; atribuir/concluir; pontos acumulam; convite entrega a pessoa dentro
   da casa vendo quem já entrou; **os pontos-bônus não aparecem em nenhuma comparação entre moradores**
   — sem tela, sem endpoint, sem query que ordene pessoas por pontos (ADR-0010).
@@ -150,6 +175,67 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
 - **Onboarding que destrava:** **Fase 1** (convidar um morador → concluir 1 tarefa).
 - **Skills:** `casa-dominio-tarefas` (máquina de estados, rotação, pontos), `casa-mobile-dev`,
   `casa-backend-dev`, `casa-tech-lead`.
+
+### Decisões de escopo (tech lead, 2026-09-06)
+
+Tomadas para a quebra abaixo caber no menor desenho que cumpre a regra. Cada uma corta uma
+alternativa maior de propósito:
+
+1. **Conclusão é evento, não estado terminal da tarefa.** Nasce a tabela `conclusoes`
+   (append-only); `tarefas` não ganha coluna `concluida_em`. Tarefa doméstica é recorrente por
+   natureza — a louça de hoje não "termina" a louça. Máquina de estados com pendente→concluída
+   exigiria reabertura agendada, e **frequência é Épico 4**. Preço: "o que falta hoje" não existe
+   ainda; a aba lista tarefas, não pendências do dia.
+2. **Peso de esforço é enum de 3 (`leve` / `medio` / `pesado`) → 1 / 2 / 3 pontos**, calculado no
+   servidor. Número livre digitado pelo morador vira negociação de placar entre duas pessoas, que é
+   o atrito que o produto existe para remover.
+3. **Bônus é `bonus_detestada boolean` na tarefa** → +2 pontos fixos para quem está da vez. Atributo
+   da tarefa, nunca da pessoa (ADR-0010). Só tem efeito em modo Rodízio: bônus em Fixo é aumento
+   permanente para o dono, e em Aberta é corrida por pontos.
+4. **Rotação sai da ordem estável de `moradores.criado_em`**, sem tabela de ordem. O "próximo" é o
+   morador seguinte ao responsável atual, circular. Ordem configurável é feature que ninguém pediu.
+5. **Concluir não é `SECURITY DEFINER`.** `cria_casa()` e `entra_na_casa()` existem porque o
+   privilégio bruto (`UPDATE moradores.casa_id`) abriria entrada em casa alheia — nenhuma policy
+   sobre a linha distingue "a casa que criei" de "uma casa qualquer". Aqui não: `UPDATE` em tarefa
+   com `casa_id = casa_atual()` é exatamente o que a policy sabe decidir. Função a mais é raio a
+   mais para revisar.
+6. **A navegação vira abas.** Hoje o app é um fluxo linear que termina em `casa.tsx`; a aba Tarefas
+   não cabe nele sem `expo-router` em tabs. `casa.tsx` perde a lista de tarefas e vira a aba Casa
+   (o conteúdo real dela é o Épico 3).
+
+### Quebra em stories
+
+| # | Camada | Story | Critério de aceite |
+|---|---|---|---|
+| 1 | dados | `0006`: `tarefas` ganha `peso`, `modo`, `responsavel_id`, `bonus_detestada`; policies de `UPDATE`/`DELETE` escopadas por `casa_atual()`; GRANT correspondente | `check:migration` up→down→up; `check:rls` prova que morador de outra casa não altera nem apaga tarefa **no banco**, com `SET ROLE casa_app` |
+| 2 | dados | `0007`: `conclusoes` (`tarefa_id`, `casa_id`, `morador_id`, `pontos`, `concluida_em`), append-only | `casa_app` tem só `SELECT`/`INSERT` — `UPDATE`/`DELETE` falham por privilégio, não por handler; leitura cruzada entre casas negada |
+| 3 | contracts | zod de tarefa completa, criar/editar tarefa, conclusão e `pontos` (sua parte + total da casa) | o mesmo schema valida o formulário e o payload no handler; **nenhum schema tem campo de pontos de terceiro** |
+| 4 | backend | CRUD de tarefa: `POST`/`PATCH`/`DELETE /api/tarefas` | atribuir responsável de outra casa é recusado **pela policy**, não por `if` no handler; `npm run guards` verde |
+| 5 | backend | `GET /api/tarefas` com `responsavelId` (o app resolve apelido/cor pela lista de moradores já em cache — story 3) | devolve modo, peso, responsável e bônus de toda tarefa da casa; nenhuma resposta carrega contador por morador |
+| 6 | backend | concluir: `POST /api/tarefas/:id/conclusoes` — pontos no servidor + rodízio avança na mesma transação | Rodízio com 3 moradores: concluir passa a vez ao próximo, circular; Fixo e Aberta não mexem no responsável; `pontos` enviado pelo cliente é ignorado |
+| 7 | backend | `GET /api/casa/pontos`: "sua parte" + total da casa | a resposta **não contém** pontos de outro morador; teste quebra se alguém adicionar breakdown por pessoa |
+| 8 | qa | guarda anti-ranking (ADR-0010) | `npm run guards` reprova query que ordene moradores por pontos e endpoint que devolva pontos alheios — a guarda entra **junto com a feature**, não em review depois |
+| 9 | client | `lib/api/tarefas.ts` + chaves de cache e invalidação | concluir invalida tarefas **e** pontos; o `401 → refresh → retry` continua valendo nas rotas novas |
+| 10 | UI | navegação em abas + aba Tarefas (Todas / Minhas / Livres) com concluir | Livres = só modo Aberta; Minhas = só as da pessoa; concluir reflete na lista sem recarregar a tela |
+| 11 | UI | FAB de adicionar + tela de tarefa (título, peso, modo, responsável, marcar detestada) | criar / editar / apagar num device físico; marcar detestada fora do Rodízio não oferece bônus |
+| 12 | UI | Fase 1 do onboarding: convidar → concluir 1 tarefa | dois moradores na casa, uma conclusão, pontos somam em "sua parte" e no total — e em nenhum lugar mais |
+| 13 | 🚧 0b | convite por **link** + **QR** + cancelar convite | **bloqueado**: exige URL pública e deep link (Épico 0b). Deep link abre a Fase 0 no ramo *tem convite*; cancelar invalida o código |
+
+> [!note] Ordem de execução
+> 1→2 antes de tudo (a UI não vem antes da camada de dados). A story 8 é a única que pode rodar em
+> paralelo com 4–7 e **deve** ficar pronta antes da 10 — a guarda precisa existir antes de a tela
+> ter onde exibir um pódio acidental. A 13 fica parada até o 0b fechar.
+
+- **Status (2026-10-26):** stories 1–12 entregues; a 13 segue bloqueada pelo 0b. Decisões tomadas
+  na implementação, que a tabela acima não fixava:
+  - **qualquer morador conclui qualquer tarefa**, e os pontos — bônus incluído — vão para quem fez;
+    cobrir o par é comportamento desejado, não exceção;
+  - **a vez do rodízio anda a partir do responsável**, não de quem concluiu: cobrir o par não muda
+    de quem é a próxima. Ninguém da vez recomeça do primeiro morador;
+  - `GET /api/casa` ganhou **`euId`**: o filtro Minhas precisa saber quem é você, e os tokens são
+    opacos para o app;
+  - concluir pede **confirmação** no app, porque conclusão não se desfaz (append-only, 0007);
+  - a **Fase 1** é um cartão derivado do estado (moradores ≥ 2, sua parte > 0), sem persistência.
 
 ## Épico 3 — Cooperativo
 
@@ -260,10 +346,13 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
   — não em review depois.
 - **Operação da VPS sem backup restaurável** → perda total dos dados da casa. *Destrava:* restore
   testado como DoD do **Épico 0b**, que precisa fechar antes do convite do Épico 2.
-- **Provedor de VPS e backup offsite** (decisão nº 5) → deixou de bloquear o começo, mas trava o 0b.
-  *Destrava:* decidir durante o Épico 1, com folga.
+- **Provedor de VPS e backup offsite** (decisão nº 5) → fechada pelo ADR-0014 (2026-10-26): VPS do
+  `improvisa-ai`, backup **só local** como risco aceito — perder a VPS é perder tudo. Rever antes de abrir
+  o app para fora do círculo de teste.
+  *Destrava:* bucket + usuário IAM na conta AWS que o improvisa já usa para o dump dele.
 - **Divergência local × produção** → é o preço do corte 0a/0b: bug de deploy só aparece no 0b.
-  *Destrava:* o mesmo `docker-compose.yml` nos dois ambientes, mudando só env e o serviço `caddy`.
+  *Destrava:* o mesmo `docker-compose.yml` nos dois ambientes; produção só sobrepõe o
+  `docker-compose.prod.yml` (portas, rede `edge`, migration, limites).
 - **Modelo de negócio** (nº 8) e **LGPD/termos** (nº 10) seguem abertos → Épico 6.
 
 ---

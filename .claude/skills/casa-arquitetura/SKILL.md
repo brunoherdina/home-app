@@ -23,7 +23,7 @@ Persona: arquiteto do sistema. Define stack, convenções e o que conta como "pr
 | Realtime | `LISTEN/NOTIFY` → WebSocket | anel Energia da Casa + meta coletiva, **payload agregado** |
 | Jobs | worker Node + cron no compose | notif com horário de silêncio, agregação de incômodos |
 | Dados (dev) | Drizzle + drizzle-kit | schema em TS, migrations `.sql`; **`down` à mão** |
-| Infra | Docker Compose em VPS + Caddy | backup/TLS/monitoramento são nossos |
+| Infra | Docker Compose na VPS do improvisa-ai, atrás do nginx do `vps-edge` (ADR-0014) | backup/TLS/monitoramento são nossos |
 | Design | Figma + tokens (`tokens.json`) | identidade travada |
 
 ## Convenções

@@ -5,8 +5,8 @@
  * (vitest) sem mock pesado de Expo: baseUrl, fetch e sessão chegam injetados.
  * cliente.ts é o fio fino que liga isto ao runtime do app.
  */
+import { parDeTokensSchema } from '@casa/contracts'
 import type { SessaoDoCliente } from '../sessao/sessao'
-import { validaRespostaRefresh } from './contratos-auth'
 
 export class ErroDaApi extends Error {
   constructor(
@@ -44,11 +44,24 @@ function erroTransitorio(status: number) {
  */
 const SEM_RENOVACAO = /^\/api\/auth\/(login|register|refresh)\b/
 
+/**
+ * Quanto uma request espera pela resposta antes de desistir.
+ *
+ * O fetch do React Native não tem prazo nenhum. Com o telefone numa rede que
+ * não alcança a API (dados móveis apontando para um IP de LAN), o pacote se
+ * perde em silêncio e o botão gira por uns dois minutos, até o sistema
+ * desistir da conexão — sem dizer nada. Quinze segundos cobrem uma rede ruim
+ * de verdade e ainda devolvem "sem conexão" enquanto a pessoa está olhando.
+ */
+const PRAZO_PADRAO_MS = 15_000
+
 export type OpcoesDoNucleo = {
   baseUrl: string
   sessao: SessaoDoCliente
   /** Injetável para teste; no app é o fetch global do React Native. */
   fetchFn?: typeof fetch
+  /** Injetável para teste; no app é `PRAZO_PADRAO_MS`. */
+  prazoMs?: number
 }
 
 export type Requisita = <T>(
@@ -56,16 +69,67 @@ export type Requisita = <T>(
   opcoes: RequestInit & { valida: (dado: unknown) => T },
 ) => Promise<T>
 
-export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucleo): Requisita {
+export type Cliente = {
+  requisita: Requisita
+  /**
+   * Troca o refresh guardado no cofre por um par novo — a reidratação da
+   * sessão no boot (ADR-0008: o access só vive em memória, então todo início a
+   * frio começa sem nenhum).
+   *
+   * `true` = a sessão vive; `false` = o servidor NEGOU o refresh (ou não havia
+   * nenhum) e o cofre já foi limpo; **lança** quando a renovação apenas não
+   * pôde acontecer agora. Os três estados são os três destinos do boot: casa,
+   * tela de entrar, e "sem conexão — tente de novo" — que não é login.
+   *
+   * Existe além do interceptor porque o interceptor reage a um 401, e no boot
+   * esse 401 seria PROVOCADO: a primeira request sairia sem `Authorization`
+   * só para tomar a recusa que já se sabe que vem. Restaurar antes troca três
+   * idas ao servidor por duas e dá ao splash um único `await` para segurar.
+   * Compartilha o single-flight com o interceptor — restauração e um 401
+   * concorrente não geram dois refreshes com o mesmo token.
+   */
+  restauraSessao: () => Promise<boolean>
+}
+
+export function criaRequisita({
+  baseUrl,
+  sessao,
+  fetchFn = fetch,
+  prazoMs = PRAZO_PADRAO_MS,
+}: OpcoesDoNucleo): Cliente {
   let refreshEmVoo: Promise<boolean> | null = null
+
+  /**
+   * O fetch com prazo. Qualquer falha antes de haver resposta — rede fora,
+   * DNS, prazo estourado — vira `SEM_CONEXAO`: sem isso a tela recebia um
+   * `TypeError` cru e mostrava "algo deu errado", que não diz à pessoa que
+   * basta tentar de novo.
+   */
+  async function buscaComPrazo(url: string, init: RequestInit): Promise<Response> {
+    const desistencia = new AbortController()
+    const prazo = setTimeout(() => desistencia.abort(), prazoMs)
+    // Quem chama ainda pode cancelar por conta própria.
+    init.signal?.addEventListener('abort', () => desistencia.abort())
+    try {
+      return await fetchFn(url, { ...init, signal: desistencia.signal })
+    } catch {
+      throw erroTransitorio(0)
+    } finally {
+      clearTimeout(prazo)
+    }
+  }
 
   /** Toda request sai com o access da memória — se houver um (ADR-0008). */
   function executa(caminho: string, init: RequestInit): Promise<Response> {
     const accessToken = sessao.leAccessToken()
-    return fetchFn(`${baseUrl}${caminho}`, {
+    return buscaComPrazo(`${baseUrl}${caminho}`, {
       ...init,
       headers: {
-        'content-type': 'application/json',
+        // Só quando HÁ corpo. O Fastify recusa `application/json` com corpo
+        // vazio (FST_ERR_CTP_EMPTY_JSON_BODY, 400) — e request sem corpo é
+        // caminho normal aqui: gerar convite, apagar tarefa. Declarar o tipo
+        // de um corpo que não existe fazia essas duas falharem no servidor.
+        ...(init.body != null ? { 'content-type': 'application/json' } : {}),
         ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
         ...init.headers,
       },
@@ -95,7 +159,7 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
    * A distinção é a regra central deste arquivo: `sessao.expira()` apaga o
    * refresh do secure store, e credencial apagada não volta. Só o servidor
    * pode declarar a credencial morta; rede ruim e API reiniciando, não. Sem
-   * isso, o metrô sem sinal ou um 502 de 20 s do Caddy produziriam
+   * isso, o metrô sem sinal ou um 502 de 20 s do proxy produziriam
    * exatamente o logout que o ADR-0008 existe para eliminar — e por queda de
    * rede, não pelos 7 dias que a ADR ataca.
    */
@@ -114,23 +178,25 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
     }
 
     if (!refreshToken) {
-      // Sem refresh guardado não há o que renovar — a sessão, se existia, acabou.
-      await sessao.expira()
+      // Sem refresh guardado não há o que renovar. `encerra` e não `expira`: o
+      // evento de expiração é um AVISO de que a sessão morreu sem a pessoa
+      // pedir, e aqui não havia sessão para morrer — é o estado normal de quem
+      // abre o app pela primeira vez. Emitindo, o boot vira laço: quem escuta o
+      // evento limpa o cache e navega para a tela de entrar, a limpeza faz a
+      // restauração rodar de novo, e ela emite de novo. Quem tinha uma request
+      // em voo não perde o sinal: o `false` vira `SESSAO_EXPIRADA` logo abaixo.
+      await sessao.encerra()
       return false
     }
 
-    let resposta: Response
-    try {
-      resposta = await fetchFn(`${baseUrl}/api/auth/refresh`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      })
-    } catch {
-      // Rede fora, DNS, timeout: ninguém negou nada. O cofre fica; o próximo
-      // 401 tenta de novo.
-      throw erroTransitorio(0)
-    }
+    // Rede fora, DNS, prazo estourado: ninguém negou nada. `buscaComPrazo`
+    // lança `SEM_CONEXAO`, o cofre fica, e o próximo 401 tenta de novo. O
+    // prazo importa aqui também: no boot o splash espera por esta chamada.
+    const resposta = await buscaComPrazo(`${baseUrl}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    })
 
     // Negação explícita (refresh revogado, reusado ou expirado — ADR-0008):
     // é aqui, e só aqui, que a credencial é destruída.
@@ -146,11 +212,11 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
     // reapresentar o refresh consumido dispararia a detecção de reuso.
     // Corpo fora do contrato também não é negação: o erro sobe (como em
     // `valida` no fim de `requisita`) sem levar o cofre junto.
-    await sessao.guardaTokens(validaRespostaRefresh(await resposta.json()))
+    await sessao.guardaTokens(parDeTokensSchema.parse(await resposta.json()))
     return true
   }
 
-  return async function requisita<T>(
+  async function requisita<T>(
     caminho: string,
     opcoes: RequestInit & { valida: (dado: unknown) => T },
   ): Promise<T> {
@@ -189,4 +255,6 @@ export function criaRequisita({ baseUrl, sessao, fetchFn = fetch }: OpcoesDoNucl
     // (ADR-0009). Contrato quebrado aparece aqui, não três telas adiante.
     return valida(corpo)
   }
+
+  return { requisita, restauraSessao: renovaSessao }
 }

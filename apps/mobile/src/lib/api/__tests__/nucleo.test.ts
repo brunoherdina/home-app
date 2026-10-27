@@ -28,6 +28,18 @@ function respostaJson(status: number, corpo: unknown): Response {
 }
 
 /**
+ * Par que a API devolve de verdade em `/api/auth/refresh` — os três campos de
+ * `parDeTokensSchema`, `expiraEmSegundos` inclusive. O núcleo valida a resposta
+ * com o schema compartilhado (ADR-0009), então um fixture com dois campos
+ * passaria no teste e quebraria contra a API real.
+ */
+const PAR_NOVO = {
+  accessToken: 'access-novo',
+  refreshToken: 'refresh-novo',
+  expiraEmSegundos: 900,
+}
+
+/**
  * Palco padrão dos cenários: sessão viva com access já vencido no servidor.
  * `respondeRefresh` e `respondeRecurso` parametrizam cada teste; os contadores
  * são o que prova a intenção (uma chamada de refresh, um retry só).
@@ -61,8 +73,8 @@ async function montaCenario(opcoes: {
     return opcoes.respondeRecurso(accessToken, contadores.recurso)
   }
 
-  const requisita = criaRequisita({ baseUrl: BASE, sessao, fetchFn: fetchFalso })
-  return { requisita, sessao, cofre, contadores, expirouVezes: () => expirou }
+  const { requisita, restauraSessao } = criaRequisita({ baseUrl: BASE, sessao, fetchFn: fetchFalso })
+  return { requisita, restauraSessao, sessao, cofre, contadores, expirouVezes: () => expirou }
 }
 
 const valida = (dado: unknown) => dado as { ok: boolean }
@@ -71,7 +83,7 @@ describe('interceptor de sessão do cliente', () => {
   it('401 → refresh → repete a request UMA vez com o access rotacionado', async () => {
     const cenario = await montaCenario({
       respondeRefresh: () =>
-        respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+        respostaJson(200, PAR_NOVO),
       respondeRecurso: (accessToken) =>
         accessToken === 'access-novo'
           ? respostaJson(200, { ok: true })
@@ -113,7 +125,7 @@ describe('interceptor de sessão do cliente', () => {
   it('segundo 401 mesmo após refresh derruba a sessão em vez de entrar em loop', async () => {
     const cenario = await montaCenario({
       respondeRefresh: () =>
-        respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+        respostaJson(200, PAR_NOVO),
       // O recurso nega sempre: o problema não é expiração de token.
       respondeRecurso: () => respostaJson(401, { codigo: 'SEM_ACESSO', mensagem: 'negado' }),
     })
@@ -129,7 +141,7 @@ describe('interceptor de sessão do cliente', () => {
   /**
    * Falha do refresh que NÃO é negação não pode custar a credencial.
    * `sessao.expira()` chama `SecureStore.deleteItemAsync`: apagou, acabou —
-   * a pessoa digita a senha de novo. Um 502 do Caddy ou o metrô sem sinal
+   * a pessoa digita a senha de novo. Um 502 do proxy ou o metrô sem sinal
    * viraria o logout que o ADR-0008 foi escrito para eliminar, e por queda
    * de rede em vez dos 7 dias que a ADR ataca.
    */
@@ -139,7 +151,7 @@ describe('interceptor de sessão do cliente', () => {
         respondeRefresh: (chamada) =>
           chamada === 1
             ? respostaJson(503, {})
-            : respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+            : respostaJson(200, PAR_NOVO),
         respondeRecurso: (accessToken) =>
           accessToken === 'access-novo'
             ? respostaJson(200, { ok: true })
@@ -205,7 +217,7 @@ describe('interceptor de sessão do cliente', () => {
     const cenario = await montaCenario({
       cofre,
       respondeRefresh: () =>
-        respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+        respostaJson(200, PAR_NOVO),
       respondeRecurso: (accessToken) =>
         accessToken === 'access-novo'
           ? respostaJson(200, { ok: true })
@@ -245,7 +257,7 @@ describe('interceptor de sessão do cliente', () => {
     async (caminho) => {
       const cenario = await montaCenario({
         respondeRefresh: () =>
-          respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' }),
+          respostaJson(200, PAR_NOVO),
         respondeRecurso: () =>
           respostaJson(401, {
             codigo: 'CREDENCIAL_INVALIDA',
@@ -280,7 +292,7 @@ describe('interceptor de sessão do cliente', () => {
     const cenario = await montaCenario({
       respondeRefresh: async () => {
         await todasTomaram401
-        return respostaJson(200, { accessToken: 'access-novo', refreshToken: 'refresh-novo' })
+        return respostaJson(200, PAR_NOVO)
       },
       respondeRecurso: (accessToken) => {
         if (accessToken === 'access-novo') return respostaJson(200, { ok: true })
@@ -303,5 +315,243 @@ describe('interceptor de sessão do cliente', () => {
     // 3 originais (401) + 3 repetições (200).
     expect(cenario.contadores.recurso).toBe(6)
     expect(cenario.expirouVezes()).toBe(0)
+  })
+})
+
+/**
+ * Boot a frio: o access só vive em memória (ADR-0008), então todo início de app
+ * começa com `leAccessToken() === null` e um refresh — ou nada — no cofre.
+ *
+ * O que estes testes protegem é a decisão de rota do splash. `restauraSessao`
+ * tem três saídas e cada uma manda a pessoa para um lugar diferente: `true`
+ * segue para a casa, `false` vai para a tela de entrar, e a exceção fica em
+ * "sem conexão". Colapsar as duas últimas é o bug clássico — abrir o app no
+ * metrô mandaria fazer login de novo, exatamente o que o ADR-0008 evita.
+ */
+function montaBoot(opcoes: {
+  refreshGuardado?: string | null
+  respondeRefresh?: (chamada: number) => Response | Promise<Response>
+  respondeRecurso?: (accessToken: string | null, chamada: number) => Response | Promise<Response>
+}) {
+  const cofre = criaArmazenamentoFalso(opcoes.refreshGuardado ?? null)
+  const sessao = criaSessao(cofre)
+
+  let expirou = 0
+  sessao.aoExpirar(() => {
+    expirou += 1
+  })
+
+  const contadores = { refresh: 0, recurso: 0 }
+
+  const fetchFalso: typeof fetch = async (entrada, init) => {
+    const url = String(entrada)
+    if (url === `${BASE}/api/auth/refresh`) {
+      contadores.refresh += 1
+      if (!opcoes.respondeRefresh) throw new Error('refresh inesperado neste cenário')
+      return opcoes.respondeRefresh(contadores.refresh)
+    }
+    contadores.recurso += 1
+    if (!opcoes.respondeRecurso) throw new Error('request de recurso inesperada neste cenário')
+    const auth = new Headers(init?.headers).get('authorization')
+    const accessToken = auth?.startsWith('Bearer ') ? auth.slice('Bearer '.length) : null
+    return opcoes.respondeRecurso(accessToken, contadores.recurso)
+  }
+
+  const cliente = criaRequisita({ baseUrl: BASE, sessao, fetchFn: fetchFalso })
+  return { ...cliente, sessao, cofre, contadores, expirouVezes: () => expirou }
+}
+
+describe('restauração da sessão no boot', () => {
+  it('troca o refresh do cofre por um par novo sem provocar 401 em rota nenhuma', async () => {
+    const boot = montaBoot({
+      refreshGuardado: 'refresh-antigo',
+      respondeRefresh: () => respostaJson(200, PAR_NOVO),
+    })
+
+    // Ponto de partida do app frio: nada em memória.
+    expect(boot.sessao.leAccessToken()).toBeNull()
+
+    await expect(boot.restauraSessao()).resolves.toBe(true)
+
+    expect(boot.sessao.leAccessToken()).toBe('access-novo')
+    // Rotação (ADR-0008): o refresh usado no boot também é gasto.
+    expect(boot.cofre.token).toBe('refresh-novo')
+    // O motivo de `restauraSessao` existir: nenhuma request de recurso foi
+    // disparada só para colher o 401 que já se sabia que viria.
+    expect(boot.contadores.recurso).toBe(0)
+    expect(boot.expirouVezes()).toBe(0)
+  })
+
+  it('cofre vazio (primeira instalação) resolve false sem falar com o servidor', async () => {
+    const boot = montaBoot({ refreshGuardado: null })
+
+    await expect(boot.restauraSessao()).resolves.toBe(false)
+
+    expect(boot.contadores.refresh).toBe(0)
+    expect(boot.sessao.leAccessToken()).toBeNull()
+    // NÃO emite "a sessão expirou": não havia sessão. Quem ouve o evento limpa
+    // o cache e navega — e a limpeza faria a restauração rodar de novo, em
+    // laço, no boot mais comum que existe (primeira abertura do app).
+    expect(boot.expirouVezes()).toBe(0)
+  })
+
+  it('refresh negado pelo servidor resolve false e limpa o cofre', async () => {
+    const boot = montaBoot({
+      refreshGuardado: 'refresh-revogado',
+      respondeRefresh: () =>
+        respostaJson(401, { codigo: 'SESSAO_INVALIDA', mensagem: 'expirou' }),
+    })
+
+    await expect(boot.restauraSessao()).resolves.toBe(false)
+
+    // Só o servidor pode declarar a credencial morta — e declarou.
+    expect(boot.cofre.token).toBeNull()
+    expect(boot.expirouVezes()).toBe(1)
+  })
+
+  it('rede fora no boot LANÇA e preserva o refresh — sem conexão não é logout', async () => {
+    const boot = montaBoot({
+      refreshGuardado: 'refresh-antigo',
+      respondeRefresh: () => {
+        throw new TypeError('Network request failed')
+      },
+    })
+
+    await expect(boot.restauraSessao()).rejects.toMatchObject({
+      status: 0,
+      codigo: 'SEM_CONEXAO',
+    })
+
+    // A regra central do módulo: o cofre sobrevive ao que não foi negação.
+    expect(boot.cofre.token).toBe('refresh-antigo')
+    expect(boot.expirouVezes()).toBe(0)
+  })
+
+  it('restauração e um 401 concorrente compartilham o MESMO refresh', async () => {
+    // A request de recurso sai antes de a restauração responder — é a corrida
+    // real do boot, em que a primeira tela dispara sua query cedo demais.
+    let liberaRefresh!: () => void
+    const podeResponder = new Promise<void>((resolve) => {
+      liberaRefresh = resolve
+    })
+
+    const boot = montaBoot({
+      refreshGuardado: 'refresh-antigo',
+      respondeRefresh: async () => {
+        await podeResponder
+        return respostaJson(200, PAR_NOVO)
+      },
+      respondeRecurso: (accessToken) =>
+        accessToken === 'access-novo'
+          ? respostaJson(200, { ok: true })
+          : respostaJson(401, { codigo: 'TOKEN_VENCIDO', mensagem: 'expirou' }),
+    })
+
+    const restauracao = boot.restauraSessao()
+    const recurso = boot.requisita('/api/recurso', { valida })
+
+    // Deixa a request de recurso tomar o 401 antes de o refresh responder.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    liberaRefresh()
+
+    await expect(restauracao).resolves.toBe(true)
+    await expect(recurso).resolves.toEqual({ ok: true })
+
+    // Dois refreshes com o mesmo token seriam lidos como reuso e revogariam a
+    // família (ADR-0008) — o app se deslogaria sozinho ao abrir.
+    expect(boot.contadores.refresh).toBe(1)
+  })
+})
+
+describe('cabeçalhos da request', () => {
+  /**
+   * O Fastify devolve 400 para `content-type: application/json` com corpo
+   * vazio. Gerar convite e apagar tarefa não têm corpo — e falhavam no
+   * servidor porque o núcleo declarava JSON em toda request.
+   */
+  async function cabecalhosDe(init: RequestInit) {
+    let enviados: Headers | null = null
+    const sessao = criaSessao(criaArmazenamentoFalso())
+    await sessao.guardaTokens({ accessToken: 'access', refreshToken: 'refresh' })
+    const fetchFalso: typeof fetch = async (_entrada, recebido) => {
+      enviados = new Headers(recebido?.headers)
+      return new Response(null, { status: 204 })
+    }
+    const { requisita } = criaRequisita({ baseUrl: BASE, sessao, fetchFn: fetchFalso })
+    await requisita('/api/qualquer', { ...init, valida: () => undefined })
+    return enviados!
+  }
+
+  it('sem corpo não declara content-type — POST de convite e DELETE de tarefa', async () => {
+    expect((await cabecalhosDe({ method: 'POST' })).has('content-type')).toBe(false)
+    expect((await cabecalhosDe({ method: 'DELETE' })).has('content-type')).toBe(false)
+  })
+
+  it('com corpo declara JSON, e o access vai junto nos dois casos', async () => {
+    const comCorpo = await cabecalhosDe({ method: 'POST', body: '{}' })
+    expect(comCorpo.get('content-type')).toBe('application/json')
+    expect(comCorpo.get('authorization')).toBe('Bearer access')
+    expect((await cabecalhosDe({ method: 'DELETE' })).get('authorization')).toBe('Bearer access')
+  })
+})
+
+describe('rede que não responde', () => {
+  /**
+   * O fetch do RN não tem prazo. Com o telefone fora da rede da API, o botão
+   * de criar conta girava por minutos e, quando a falha enfim chegava, era um
+   * `TypeError` que a tela traduzia como "algo deu errado".
+   */
+  async function clienteCom(fetchFn: typeof fetch) {
+    const sessao = criaSessao(criaArmazenamentoFalso())
+    return criaRequisita({ baseUrl: BASE, sessao, fetchFn, prazoMs: 20 })
+  }
+
+  it('fetch que falha vira SEM_CONEXAO, não TypeError', async () => {
+    const { requisita } = await clienteCom(async () => {
+      throw new TypeError('Network request failed')
+    })
+
+    await expect(requisita('/api/auth/register', { method: 'POST', valida })).rejects.toMatchObject({
+      status: 0,
+      codigo: 'SEM_CONEXAO',
+    })
+  })
+
+  it('fetch que nunca responde é abortado no prazo e vira SEM_CONEXAO', async () => {
+    let abortado = false
+    const { requisita } = await clienteCom(
+      (_entrada, init) =>
+        new Promise((_resolve, rejeita) => {
+          init?.signal?.addEventListener('abort', () => {
+            abortado = true
+            rejeita(new DOMException('Aborted', 'AbortError'))
+          })
+        }),
+    )
+
+    await expect(requisita('/api/auth/register', { method: 'POST', valida })).rejects.toMatchObject({
+      status: 0,
+      codigo: 'SEM_CONEXAO',
+    })
+    expect(abortado).toBe(true)
+  })
+
+  it('o refresh do boot também tem prazo — o splash não fica preso', async () => {
+    const sessao = criaSessao(criaArmazenamentoFalso('refresh-guardado'))
+    const { restauraSessao } = criaRequisita({
+      baseUrl: BASE,
+      sessao,
+      prazoMs: 20,
+      fetchFn: (_entrada, init) =>
+        new Promise((_resolve, rejeita) => {
+          init?.signal?.addEventListener('abort', () =>
+            rejeita(new DOMException('Aborted', 'AbortError')),
+          )
+        }),
+    })
+
+    await expect(restauraSessao()).rejects.toMatchObject({ codigo: 'SEM_CONEXAO' })
+    // Prazo estourado não é negação: a credencial continua no cofre.
+    expect(await sessao.leRefreshToken()).toBe('refresh-guardado')
   })
 })

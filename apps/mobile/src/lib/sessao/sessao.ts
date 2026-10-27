@@ -27,10 +27,16 @@ export type ParDeTokens = { accessToken: string; refreshToken: string }
 
 export type Sessao = ReturnType<typeof criaSessao>
 
-/** Visão mínima da sessão que o cliente HTTP precisa (lib/api/nucleo.ts). */
+/**
+ * Visão mínima da sessão que o cliente HTTP precisa (lib/api/nucleo.ts).
+ *
+ * `encerra` e `expira` estão as DUAS aqui porque o núcleo escolhe entre elas: a
+ * negação do servidor expira (e avisa quem escuta), o cofre vazio no boot
+ * apenas encerra — não havia sessão para avisar que morreu.
+ */
 export type SessaoDoCliente = Pick<
   Sessao,
-  'leAccessToken' | 'leRefreshToken' | 'guardaTokens' | 'expira'
+  'leAccessToken' | 'leRefreshToken' | 'guardaTokens' | 'encerra' | 'expira'
 >
 
 export function criaSessao(armazenamento: ArmazenamentoRefresh) {
@@ -48,7 +54,11 @@ export function criaSessao(armazenamento: ArmazenamentoRefresh) {
       await armazenamento.grava(tokens.refreshToken)
     },
 
-    /** Logout deliberado: limpa sem emitir evento — quem saiu não precisa de aviso. */
+    /**
+     * Limpa sem emitir evento. Dois usos, mesmo motivo: o logout deliberado
+     * (quem saiu não precisa de aviso) e o boot que não achou refresh nenhum
+     * no cofre — nos dois casos não há sessão perdida para anunciar.
+     */
     async encerra() {
       accessToken = null
       await armazenamento.apaga()

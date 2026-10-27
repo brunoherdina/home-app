@@ -1,0 +1,71 @@
+# Deploy da API do Casa na VPS do improvisa-ai (ADR-0014) a cada push na main
+# que toca o backend, ou à mão (workflow_dispatch) para subir um branch antes do
+# merge. Mesmo desenho do prumoz-site e do improvisa-ai:
+#
+# o código vai do runner para a VPS por `git push`; a VPS não fala com o GitHub
+# e não guarda credencial dele. O build roda na VPS, onde está o infra/.env.
+#
+# Segredos do repositório: VPS_HOST, VPS_SSH_KEY (chave só deste deploy, usuário
+# deploy, linha `casa-deploy` no authorized_keys da VPS) e VPS_KNOWN_HOSTS
+# (linha do known_hosts com a chave de host da VPS).
+name: Deploy na VPS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - "packages/contracts/**"
+      - "infra/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy-vps.yml"
+  workflow_dispatch:
+
+# Dois deploys ao mesmo tempo disputariam o mesmo container. Sem cancelar o que
+# já está rodando: interromper um `compose up` no meio é pior que esperar.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Histórico inteiro: com clone raso, o push é recusado ("shallow update
+      # not allowed") sempre que um commit intermediário não foi deployado.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SSH para a VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps
+          chmod 600 ~/.ssh/vps
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<CFG
+          Host vps
+            HostName $VPS_HOST
+            User deploy
+            IdentityFile ~/.ssh/vps
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          CFG
+
+      # Deploya o commit exato do run. Sem `--force`: re-rodar um run antigo é
+      # recusado como non-fast-forward, em vez de virar rollback silencioso.
+      - name: Push do commit para a VPS
+        run: git push vps:/opt/casa "${GITHUB_SHA}:refs/remotes/origin/main"
+
+      # `< /dev/null`: o `docker compose run` do deploy herdaria o stdin do ssh
+      # e engoliria o resto do comando (armadilha paga pelo improvisa).
+      - name: Build, migration e subida
+        run: |
+          # shellcheck disable=SC2029  # o SHA expande no runner de propósito
+          ssh vps "set -e; cd /opt/casa; git merge --ff-only ${GITHUB_SHA}; bash infra/scripts/deploy-vps.sh" < /dev/null

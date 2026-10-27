@@ -36,6 +36,7 @@ Skills `casa-*` referenciam este arquivo; se um ADR mudar, as skills afetadas mu
 | [0011](#adr-0011--pulso-semanal-só-de-humor) | Pulso semanal só de humor | ✅ Aceito |
 | [0012](#adr-0012--identidade-é-o-morador-escopo-de-casa-por-função-sql) | Identidade é o morador; escopo de casa por função SQL | ✅ Aceito |
 | [0013](#adr-0013--role-casa_auth-para-as-rotas-sem-identidade) | Role `casa_auth` para as rotas sem identidade | ✅ Aceito |
+| [0014](#adr-0014--produção-na-vps-do-improvisa-ai-atrás-do-vps-edge) | Produção na VPS do `improvisa-ai`, atrás do `vps-edge`; backup só local | ✅ Aceito |
 
 ---
 
@@ -62,7 +63,7 @@ Stack de servidor passa a ser, tudo em Docker Compose na VPS:
 | API | **Fastify + TypeScript** em container |
 | Realtime | `LISTEN/NOTIFY` → WebSocket no próprio Fastify (ver [ADR-0004](#adr-0004--realtime-por-listennotify--websocket)) |
 | Jobs / cron | worker Node no mesmo deploy (notificações, agregação) |
-| Reverse proxy / TLS | **Caddy** (certificado automático) |
+| Reverse proxy / TLS | ~~**Caddy**~~ → nginx do `vps-edge` + certbot do host (ADR-0014, 2026-10-26) |
 | Migrations + client tipado | **Drizzle + drizzle-kit** (ver [ADR-0005](#adr-0005--drizzle--drizzle-kit-para-schema-e-client-tipado)) |
 | Storage de arquivo | **nenhum no v1** — avatar é apelido + cor, não upload |
 
@@ -512,6 +513,69 @@ Pool separado, e não `GRANT casa_auth TO casa_app`: se `casa_app` pudesse virar
   **não** tem `SELECT` em tabela de dado sensível.
 
 
+## ADR-0014 — Produção na VPS do `improvisa-ai`, atrás do `vps-edge`
+
+**Data:** 2026-10-26 · **Status:** ✅ Aceito · **Fecha a** decisão em aberto nº 5 · **Depende do** [ADR-0001](#adr-0001--postgres-auto-hospedado-em-container-vps-em-vez-de-supabase)
+
+### Contexto
+
+O Épico 0b dependia de escolher provedor e backup. Medido em 2026-10-26: a API parada usa ~210 MiB em
+container, o worker ~180 MiB e o Postgres ~55 MiB. Um núcleo atende ~700 req/s, e uma casa gera poucas
+requisições por minuto. Produção inteira cabe em ~0,5 GB.
+
+A VPS Hostinger que já roda o `improvisa-ai` e o site da Prumoz é uma KVM 4 (4 vCPU, 16 GB) com ~12 GB
+livres. Ela já tem dono das portas 80/443: o repositório `vps-edge`, um nginx com certbot no host, onde
+cada app é um container numa rede Docker. A Railway custaria US$ 6–10/mês pelo mesmo tamanho; a VPS já
+está paga.
+
+### Decisão
+
+- **Provedor:** a VPS do `improvisa-ai` (`2.25.204.192`). Código em `/opt/casa`, do usuário `deploy`.
+- **Entrada:** o nginx do `vps-edge`, não o Caddy que o roadmap previa. Um segundo proxy disputaria as
+  portas 80/443 com o que já está lá. O Casa entra como os outros apps:
+  - a API fica na rede externa `edge`, com o alias `casa-api`, sem porta publicada no host;
+  - o site é `nginx/sites/prumoz-casa.conf` no `vps-edge`;
+  - o certificado é emitido pelo certbot do host, por HTTP-01 com webroot.
+- **Domínio:** `casa.prumoz.com.br`. O DNS da zona fica na Hostinger e não há Cloudflare na frente.
+- **Compose:** o mesmo `infra/docker-compose.yml`, com `infra/docker-compose.prod.yml` por cima. O
+  override:
+  - zera as portas e o profile;
+  - acrescenta o job `migrate` (o único container com a credencial de `casa_owner`);
+  - limita a memória de todos os serviços, porque o vizinho tem um worker de áudio sem limite.
+- **Deploy:** igual ao do `prumoz-site`.
+  - O runner faz `git push` para `/opt/casa` e roda `infra/scripts/deploy-vps.sh`; a VPS não guarda
+    credencial do GitHub.
+  - O script roda a migration **sozinha antes** de trocar a API. O `depends_on` do compose não protege
+    isso: o `up` recria a API antes de esperar a migration, e uma migration que falha deixa o app fora
+    do ar (medido).
+- **IP do cliente:** a API confia no `X-Forwarded-For` só quando a conexão vem de rede privada
+  (`PROXY_CONFIAVEL=uniquelocal`), e o nginx sobrescreve o cabeçalho com o IP real.
+  - Sem isso, todo celular chega com o IP do proxy. O rate limit de login vira então um balde só para
+    o país inteiro.
+- **Backup: `pg_dump` diário só na própria VPS**, em `/backups/casa`, com 14 dias de retenção. O restore
+  é provado por `infra/scripts/restore-teste.sh`.
+
+### Risco aceito: backup sem cópia fora da VPS
+
+Decisão do Bruno em 2026-10-26, "por enquanto". **Se a VPS for perdida (disco, conta, erro de operação),
+os dados de todas as casas são perdidos junto, sem volta.** O backup local cobre erro de aplicação e de
+migration, não a perda da máquina.
+
+Isso contradiz o DoD original do 0b ("destino offsite"), e o DoD foi ajustado às claras, não em silêncio.
+**Rever antes de abrir o app para fora do círculo de teste.** O caminho barato já existe: o improvisa
+copia o dump dele para um S3. Um bucket e um usuário IAM novos na mesma conta resolvem.
+
+### Consequências
+
+- Custo marginal zero. Em troca, o Casa divide máquina, kernel e janela de manutenção com dois projetos.
+  Um incidente na VPS derruba os três.
+- Mexer no `vps-edge` mexe na borda de todos os sites. Por isso:
+  - o bloco 443 do Casa só é ativado depois que o certificado existe; `ssl_certificate` apontando para
+    arquivo inexistente derruba o nginx inteiro;
+  - o arquivo se chama `prumoz-casa.conf`, e não `casa.conf`, para não virar o servidor padrão da porta.
+- O Caddy sai da skill `casa-infra-deploy` e do roadmap; quem faz TLS é o certbot do host.
+- O e-mail de verificação continua sem transporte. O provedor de e-mail segue em aberto no 0b.
+
 ---
 
 ## Decisões ainda em aberto
@@ -521,11 +585,12 @@ Pool separado, e não `GRANT casa_auth TO casa_app`: se `casa_app` pudesse virar
 | # | Pergunta | Bloqueia |
 |---|---|---|
 | 1 | E2E de app: Maestro × Detox (decidir junto com o `rimaai`) | Épico 6 |
-| 5 | Provedor da VPS e estratégia de backup offsite | **Épico 0b** — deixou de bloquear o 0a |
 
 Fechadas em 2026-08-28: nº 2 → [ADR-0007](#adr-0007--ota-instalado-no-bootstrap) ·
 nº 3 → [ADR-0009](#adr-0009--formulários-com-react-hook-form-e-zod) ·
 nº 4 → [ADR-0008](#adr-0008--refresh-token-no-épico-1).
+Fechada em 2026-10-26: nº 5 → [ADR-0014](#adr-0014--produção-na-vps-do-improvisa-ai-atrás-do-vps-edge)
+(backup só na VPS, como risco aceito).
 
 ### Produto (do manifesto §9)
 

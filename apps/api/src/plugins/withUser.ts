@@ -3,6 +3,7 @@ import type { FastifyRequest } from 'fastify'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { pool } from '../db/pool.js'
 import * as schema from '../db/schema.js'
+import { ErroHttp } from '../erros.js'
 
 export type CasaDb = NodePgDatabase<typeof schema>
 
@@ -24,10 +25,9 @@ declare module 'fastify' {
   }
 }
 
-export class SemIdentidadeError extends Error {
-  readonly codigo = 'SEM_IDENTIDADE'
+export class SemIdentidadeError extends ErroHttp {
   constructor() {
-    super('Request sem identidade autenticada — withUser exige usuarioId.')
+    super(401, 'SEM_IDENTIDADE', 'Request sem identidade autenticada — withUser exige usuarioId.')
   }
 }
 

@@ -1,57 +1,81 @@
-import { useEffect, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
-import { buscaSaude } from '../lib/api/saude'
-import { baseUrl } from '../lib/api/cliente'
-import { cores, espacos, textos } from '../design-system/tokens'
+import { useQuery } from '@tanstack/react-query'
+import { Redirect } from 'expo-router'
+import * as SplashScreen from 'expo-splash-screen'
+import { useEffect } from 'react'
+import { SemConexao } from '../componentes/SemConexao'
+import { buscaCasa, chaveDaCasa } from '../lib/api/casa'
+import { ErroDaApi, restauraSessao } from '../lib/api/cliente'
 
 /**
- * Tela de andaimes do Épico 0a. Não é produto: existe para provar que o
- * caminho app → lib/api → Fastify → Postgres fecha no device físico, e que o
- * pool responde como `casa_app`.
+ * O boot da Fase 0: decide, ainda debaixo do splash, para qual das três telas a
+ * pessoa vai.
  *
- * A primeira tela de verdade é o criador da Fase 0 (Épico 1).
+ *   sem sessão            → /entrar
+ *   sessão, sem casa      → /nova-casa   (ramo do criador)
+ *   sessão, com casa      → /tarefas     (a aba do loop central)
+ *
+ * As duas perguntas são feitas em SEQUÊNCIA e o splash só sai depois das duas.
+ * É o que o roadmap chama de "sessão restaurada antes do splash sair", levado
+ * até o fim: esconder o splash assim que a sessão volta faria a casa de quem já
+ * mora numa aparecer por um instante como formulário de criar casa.
+ *
+ * Esta tela não desenha nada — ou está atrás do splash, ou já redirecionou.
  */
-export default function Inicio() {
-  const [estado, setEstado] = useState<string>('conectando…')
-  const [role, setRole] = useState<string | null>(null)
+export default function Boot() {
+  const sessaoQuery = useQuery({
+    queryKey: ['sessao'],
+    queryFn: restauraSessao,
+    // Sem re-tentativa e sem envelhecer: a restauração ROTACIONA o refresh
+    // (ADR-0008), então repeti-la sozinha gastaria um token por tentativa e um
+    // refetch em foco reapresentaria um token já consumido — que é exatamente
+    // o sinal de vazamento que revoga a família.
+    retry: false,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  })
+
+  const temSessao = sessaoQuery.data === true
+
+  const casaQuery = useQuery({
+    queryKey: chaveDaCasa,
+    queryFn: buscaCasa,
+    enabled: temSessao,
+  })
+
+  // Só há o que decidir quando a pergunta da vez respondeu — de erro ou não.
+  const decidido =
+    sessaoQuery.isError || sessaoQuery.data === false || (temSessao && !casaQuery.isPending)
 
   useEffect(() => {
-    buscaSaude()
-      .then((saude) => {
-        setEstado(`banco ${saude.banco} · Postgres ${saude.versao}`)
-        setRole(saude.role)
-      })
-      .catch((erro: Error) => setEstado(`sem API: ${erro.message}`))
-  }, [])
+    if (decidido) void SplashScreen.hideAsync()
+  }, [decidido])
 
-  return (
-    <View style={estilos.tela}>
-      <Text style={estilos.titulo}>Casa</Text>
-      <Text style={estilos.corpo}>{estado}</Text>
-      {role ? (
-        <Text style={role === 'casa_app' ? estilos.ok : estilos.alerta}>
-          {role === 'casa_app'
-            ? 'pool conectado como casa_app'
-            : `pool conectado como ${role} — ADR-0002 violado`}
-        </Text>
-      ) : null}
-      <Text style={estilos.legenda}>{baseUrl}</Text>
-    </View>
-  )
+  if (!decidido) return null
+
+  if (sessaoQuery.isError) {
+    return (
+      <SemConexao
+        aoTentarDeNovo={() => void sessaoQuery.refetch()}
+        ocupado={sessaoQuery.isFetching}
+      />
+    )
+  }
+
+  if (!temSessao) return <Redirect href="/entrar" />
+
+  if (casaQuery.isError) {
+    // 401 aqui significa que o interceptor tentou renovar e o servidor negou:
+    // a sessão acabou de fato, e o cofre já foi limpo. Só o que não é negação
+    // vira "sem conexão".
+    if (casaQuery.error instanceof ErroDaApi && casaQuery.error.status === 401) {
+      return <Redirect href="/entrar" />
+    }
+    return (
+      <SemConexao aoTentarDeNovo={() => void casaQuery.refetch()} ocupado={casaQuery.isFetching} />
+    )
+  }
+
+  return <Redirect href={casaQuery.data ? '/tarefas' : '/nova-casa'} />
 }
-
-const estilos = StyleSheet.create({
-  tela: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: espacos.sm,
-    padding: espacos.lg,
-    backgroundColor: cores.papel,
-  },
-  titulo: { ...textos.titulo, color: cores.moss },
-  corpo: { ...textos.corpo, color: cores.tinta },
-  ok: { ...textos.corpo, color: cores.lime },
-  alerta: { ...textos.corpo, color: cores.coral },
-  legenda: { ...textos.legenda, color: cores.cinza },
-})

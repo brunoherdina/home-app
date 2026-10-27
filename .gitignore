@@ -12,5 +12,8 @@ ios/
 .env.*
 !.env.example
 
+# worktrees efêmeras de agente — checkout, não fonte
+.claude/worktrees/
+
 *.log
 .DS_Store

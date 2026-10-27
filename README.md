@@ -53,6 +53,12 @@ Aí a RLS vira decoração, os invariantes voltam para código de aplicação e
 
 ## Estado
 
-**Épico 0a — fundação local.** O que existe hoje é substrato: banco, contrato de
-acesso, esqueleto do app e da API. A primeira tela de produto (criador da Fase 0)
-é o Épico 1.
+**Épicos 0a, 1 e 2 entregues (menos o que depende do 0b).** Uma pessoa cria a
+casa e cai numa casa povoada; convida a outra por código curto; as duas dividem
+tarefas em Rodízio, Fixo ou Aberta, concluem e veem "sua parte" e o total da
+casa — e nenhuma comparação entre elas.
+
+Bloqueado pelo **Épico 0b** (decisão nº 5: VPS + backup offsite): convite por
+link/QR, envio do e-mail de verificação e qualquer acesso fora da LAN. Próximo
+épico desbloqueado: o **3 (cooperativo)**. Ver o
+[roadmap](casa-roadmap-implementacao.md).

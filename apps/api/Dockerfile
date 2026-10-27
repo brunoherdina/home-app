@@ -23,4 +23,7 @@ WORKDIR /app/apps/api
 # Não roda como root: se alguém escapar do processo, que não seja com tudo.
 USER node
 EXPOSE 3333
-CMD ["npx", "tsx", "src/server.ts"]
+# `node --import tsx`, nunca `npx tsx`: o npx deixa o npm e o cli do tsx vivos ao
+# lado do node só para repassar o processo — ~64 MB a mais no container (cgroup,
+# medido em 2026-10-26: 272 × 208 MiB), em cada container que usa esta imagem.
+CMD ["node", "--import", "tsx", "src/server.ts"]

@@ -19,8 +19,11 @@ const baseUrl =
  * Cliente com o interceptor de sessão: 401 → refresh single-flight → repete a
  * request uma vez (ADR-0008). A lógica mora em nucleo.ts, injetável e testada
  * em Node; aqui só se liga o baseUrl do runtime Expo e a sessão real.
+ *
+ * `restauraSessao` é o mesmo refresh, chamado de propósito no boot antes de o
+ * splash sair — ver o comentário do tipo `Cliente` em nucleo.ts.
  */
-export const requisita = criaRequisita({ baseUrl, sessao })
+export const { requisita, restauraSessao } = criaRequisita({ baseUrl, sessao })
 
 export { ErroDaApi } from './nucleo'
 export { baseUrl }

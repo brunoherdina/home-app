@@ -12,7 +12,7 @@ stack:
   backend: "✅ API Fastify + TypeScript (container), auth JWT próprio (ADR-0003)"
   banco: "✅ Postgres em container + Row-Level Security + migrations (Drizzle)"
   design: "✅ Figma + design tokens (identidade visual travada)"
-  infra: "✅ Docker Compose em VPS + Caddy (TLS); EAS para build mobile"
+  infra: "✅ Docker Compose na VPS do improvisa-ai, atrás do nginx do vps-edge (TLS, ADR-0014); EAS para build mobile"
   contrato: "✅ client tipado gerado do schema Drizzle (sem OpenAPI dedicado no MVP)"
 locais:
   figma_onboarding: "https://www.figma.com/board/9F0sy1Nk0Q9FyoxwdFecL3/Onboarding-em-fases"
@@ -80,7 +80,7 @@ Bruno vinha **design-first** (protótipo React pronto, sem backend decidido). O 
 | Auth | **JWT próprio** (padrão do `improvisa-ai`) | Apelido/e-mail + senha, Google e Apple. Token no `expo-secure-store`, sempre `Bearer` (ADR-0003). |
 | Realtime | **`LISTEN/NOTIFY` + WebSocket** | Alimenta o anel **Energia da Casa** e a **meta coletiva** ao vivo, com payload **agregado** (ADR-0004). |
 | Jobs/notif. | **worker Node + cron** no mesmo deploy | Notificação com **horário de silêncio**, aviso de vez com antecedência, agregação de incômodos. |
-| Infra | **Docker Compose em VPS + Caddy** | Sem lock-in, custo fixo. Em troca, backup/TLS/monitoramento viram responsabilidade nossa (ADR-0001). |
+| Infra | **Docker Compose em VPS** (atrás do nginx do `vps-edge`, ADR-0014) | Sem lock-in, custo fixo. Em troca, backup/TLS/monitoramento viram responsabilidade nossa (ADR-0001). |
 | Dados (dev) | **Drizzle + drizzle-kit** | Substitui `supabase db push` e `gen types`. Ressalva: `down` é escrito à mão (ADR-0005). |
 | Design | **Figma + tokens** (`tokens.json`) | Identidade travada; ponte código↔Figma. |
 
@@ -154,7 +154,7 @@ O criador absorve o setup pesado diluído; o convidado entra ultra-leve. (Ver §
 | Épico | Nome | Entrega-núcleo |
 |---|---|---|
 | **0a** | Bootstrap: fundação local | harness ✅; repo ✅; skeleton Expo + API Fastify; compose local; roles + `withUser`; 1ª migration; contracts/zod; `expo-updates` instalado; tokens |
-| **0b** | Bootstrap: produção | provedor de VPS; Caddy/TLS; migration como job de deploy; backup offsite **com restore testado**; CI — fecha antes do convite (Épico 2) |
+| **0b** | Bootstrap: produção | VPS do improvisa-ai + nginx do `vps-edge`/TLS (ADR-0014); migration como job de deploy; backup **com restore testado** (offsite adiado, risco aceito); CI — fecha antes do convite (Épico 2) |
 | **1** | Identidade & Casa | auth, modelo de dados, RLS, onboarding **Fase 0** |
 | **2** | Tarefas & Divisão | aba Tarefas, pontos/modos, convite, onboarding **Fase 1** |
 | **3** | Cooperativo | Início (anel) + aba Casa, nível, ofensiva, meta coletiva |
