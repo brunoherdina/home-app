@@ -33,7 +33,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
              *
              * Ligado só fora de `production` de propósito. A API de casa é HTTP
              * simples na LAN; o dia em que existir build de produção, ela estará
-             * atrás de TLS (ADR-0001, Caddy na VPS) e esta permissão não deve ir
+             * atrás de TLS (ADR-0014, nginx do vps-edge) e esta permissão não deve ir
              * junto — cleartext habilitado em produção transforma qualquer Wi-Fi
              * hostil em leitura de token.
              */

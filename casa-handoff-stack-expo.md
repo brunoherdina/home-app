@@ -315,6 +315,11 @@ A mensagem é esperada, não é bug. Copiar a chave para o `app.config.ts` à m�
 
 **A API precisa estar acessível ao aparelho.** Em dev, o app não alcança `localhost` — aponte `EXPO_PUBLIC_API_URL` para o IP da máquina na LAN (ou para o túnel, ver abaixo). Em produção, a URL é o domínio servido pelo Caddy, sempre HTTPS.
 
+> [!note] Superado em parte pelo ADR-0014 (2026-10-26)
+> Não há `caddy`: a VPS é compartilhada e a entrada é o nginx do `vps-edge`. O compose de produção é
+> `infra/docker-compose.yml` + `infra/docker-compose.prod.yml`, e o deploy é `infra/scripts/deploy-vps.sh`.
+> Os pontos abaixo continuam valendo, trocando "Caddy" por "nginx do vps-edge".
+
 **Deploy na VPS (novo — ADR-0001).** `docker compose up -d` com quatro serviços: `postgres`, `api`, `worker`, `caddy`. Pontos que costumam morder:
 - **Volume nomeado para o Postgres.** Bind mount em host com UID diferente quebra permissão do datadir. Volume nomeado evita a classe inteira de problema.
 - **`pg_dump` agendado + restore testado.** Backup que nunca foi restaurado não é backup — restaurar num container descartável faz parte do DoD do Épico 0.

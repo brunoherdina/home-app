@@ -159,7 +159,7 @@ export function criaRequisita({
    * A distinção é a regra central deste arquivo: `sessao.expira()` apaga o
    * refresh do secure store, e credencial apagada não volta. Só o servidor
    * pode declarar a credencial morta; rede ruim e API reiniciando, não. Sem
-   * isso, o metrô sem sinal ou um 502 de 20 s do Caddy produziriam
+   * isso, o metrô sem sinal ou um 502 de 20 s do proxy produziriam
    * exatamente o logout que o ADR-0008 existe para eliminar — e por queda de
    * rede, não pelos 7 dias que a ADR ataca.
    */

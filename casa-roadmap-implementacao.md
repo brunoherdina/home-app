@@ -71,14 +71,21 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
 ### Épico 0b — Produção
 
 - **Meta:** a API acessível de fora, com os dados sobrevivendo a um acidente.
-- **Entregáveis:** provedor de VPS escolhido; compose em produção; **Caddy + TLS**; migration como job
-  de deploy (role owner, nunca o processo da API); `pg_dump` agendado com **destino offsite**; runbook
-  de restore; CI mínimo; **provedor de envio de e-mail** + domínio, que destrava a verificação de
-  e-mail gerada no Épico 1.
-- **DoD:** API responde com TLS por domínio próprio; Postgres **sem porta publicada** no host;
-  **restore do backup executado com sucesso ao menos uma vez**; nenhum segredo no repositório nem no
-  bundle do app.
-- **Depende de:** 0a + **decisão nº 5** (provedor + backup offsite).
+- **Entregáveis:** provedor de VPS escolhido (**ADR-0014**: a VPS do `improvisa-ai`); compose em
+  produção (`infra/docker-compose.prod.yml` por cima do base); **entrada pelo nginx do `vps-edge` + TLS
+  do certbot do host** em `casa.prumoz.com.br` (substitui o Caddy: as portas 80/443 da VPS já têm dono);
+  migration como job de deploy (role owner, nunca o processo da API, e **antes** de trocar a API);
+  `pg_dump` agendado; runbook de restore; deploy por push (workflow); CI mínimo (`npm run verify`
+  antes do deploy); **provedor de envio de e-mail**,
+  que destrava a verificação de e-mail gerada no Épico 1.
+- **DoD:** API responde com TLS em `casa.prumoz.com.br`; Postgres e API **sem porta publicada** no host;
+  **restore do backup executado com sucesso ao menos uma vez** (`infra/scripts/restore-teste.sh`);
+  rate limit por pessoa atrás do proxy (`PROXY_CONFIAVEL`); nenhum segredo no repositório nem no bundle
+  do app.
+- **Backup offsite: fora do DoD por decisão (2026-10-26), como risco aceito.** O dump fica só na VPS;
+  perder a VPS é perder os dados de todas as casas. Rever antes de abrir para fora do círculo de teste
+  (ADR-0014).
+- **Depende de:** 0a + decisão nº 5 — **fechada** pelo ADR-0014 em 2026-10-26.
 - **Prazo real:** antes do convite do **Épico 2** — é quando a segunda pessoa precisa alcançar a API.
 - **Skills:** `casa-infra-deploy`, `casa-tech-writer` (runbook).
 
@@ -97,7 +104,7 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
   - **Apple Sign In → Épico 6.** Exige conta Apple Developer paga e build iOS; não roda em Expo Go. A
     coluna `apple_sub` nasce no schema agora para não virar migration depois.
   - **Envio do e-mail de verificação → Épico 0b.** O token de 24 h é gerado e gravado no Épico 1; o
-    transporte é log no console até existir domínio e provedor (decisão nº 5).
+    transporte é log no console até existir provedor de e-mail (o domínio existe desde o ADR-0014).
   - **Ramo "tem convite" da Fase 0 → Épico 2.** Aceitar convite exige URL pública e deep link, que são
     0b + Épico 2. O Épico 1 entrega o **ramo do criador** ponta a ponta e só o *schema* do convite.
 - **DoD:** signup → cria casa → **casa povoada pelo template**; RLS impede ver dados de outra casa
@@ -329,10 +336,13 @@ alternativa maior de propósito:
   — não em review depois.
 - **Operação da VPS sem backup restaurável** → perda total dos dados da casa. *Destrava:* restore
   testado como DoD do **Épico 0b**, que precisa fechar antes do convite do Épico 2.
-- **Provedor de VPS e backup offsite** (decisão nº 5) → deixou de bloquear o começo, mas trava o 0b.
-  *Destrava:* decidir durante o Épico 1, com folga.
+- **Provedor de VPS e backup offsite** (decisão nº 5) → fechada pelo ADR-0014 (2026-10-26): VPS do
+  `improvisa-ai`, backup **só local** como risco aceito — perder a VPS é perder tudo. Rever antes de abrir
+  o app para fora do círculo de teste.
+  *Destrava:* bucket + usuário IAM na conta AWS que o improvisa já usa para o dump dele.
 - **Divergência local × produção** → é o preço do corte 0a/0b: bug de deploy só aparece no 0b.
-  *Destrava:* o mesmo `docker-compose.yml` nos dois ambientes, mudando só env e o serviço `caddy`.
+  *Destrava:* o mesmo `docker-compose.yml` nos dois ambientes; produção só sobrepõe o
+  `docker-compose.prod.yml` (portas, rede `edge`, migration, limites).
 - **Modelo de negócio** (nº 8) e **LGPD/termos** (nº 10) seguem abertos → Épico 6.
 
 ---

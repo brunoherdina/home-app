@@ -141,7 +141,7 @@ describe('interceptor de sessão do cliente', () => {
   /**
    * Falha do refresh que NÃO é negação não pode custar a credencial.
    * `sessao.expira()` chama `SecureStore.deleteItemAsync`: apagou, acabou —
-   * a pessoa digita a senha de novo. Um 502 do Caddy ou o metrô sem sinal
+   * a pessoa digita a senha de novo. Um 502 do proxy ou o metrô sem sinal
    * viraria o logout que o ADR-0008 foi escrito para eliminar, e por queda
    * de rede em vez dos 7 dias que a ADR ataca.
    */
