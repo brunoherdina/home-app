@@ -86,6 +86,16 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
   perder a VPS é perder os dados de todas as casas. Rever antes de abrir para fora do círculo de teste
   (ADR-0014).
 - **Depende de:** 0a + decisão nº 5 — **fechada** pelo ADR-0014 em 2026-10-26.
+- **Status (2026-10-27):** API no ar em `https://casa.prumoz.com.br/api/`.
+  - Feito: TLS do certbot; nada do Casa publica porta; deploy pelo `infra/scripts/deploy-vps.sh`.
+  - Backup: cron diário com o primeiro dump; restore provado pelo `restore-teste.sh` na VPS.
+  - Rate limit: a API enxerga o IP real atrás do proxy (provado com `X-Forwarded-For` falso).
+  - APK de preview apontando para produção.
+  - Faltam:
+    - **provedor de e-mail**;
+    - **gate de `npm run verify` antes do deploy**;
+    - **segredos do workflow** no GitHub (`VPS_HOST`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`). Sem eles, o deploy
+      pela `main` falha; até lá, o deploy é à mão.
 - **Prazo real:** antes do convite do **Épico 2** — é quando a segunda pessoa precisa alcançar a API.
 - **Skills:** `casa-infra-deploy`, `casa-tech-writer` (runbook).
 
