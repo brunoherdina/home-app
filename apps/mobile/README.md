@@ -143,8 +143,8 @@ Duas coisas ficam **congeladas no APK** no momento do build, e as duas moram no
   então o endereço da API entra fixo: `https://casa.prumoz.com.br`, a API de
   produção (ADR-0014), em `preview` e em `production`. O APK funciona em
   qualquer rede, e quem testa cria conta no banco de produção.
-* o canal de updates (`preview`) — irrelevante até o Épico 6, que é quando OTA
-  liga.
+* o canal de updates (`preview`). É por ele que chega o OTA dos aparelhos de
+  teste (ADR-0017); ver a seção OTA.
 
 > [!warning] HTTP em claro só no perfil `development`
 > Android 9+ bloqueia cleartext, e build de release não herda a exceção do modo
@@ -164,17 +164,45 @@ resultado para a função, que acrescenta o que depende do perfil de build.
 > export NODE_OPTIONS="--dns-result-order=ipv4first --no-network-family-autoselection"
 > ```
 
-## OTA (ADR-0007)
+## OTA (ADR-0007, emendado pelo ADR-0017)
 
-`expo-updates` está instalado e o `eas.json` já tem os canais
-(`development` / `preview` / `production`). **Nenhum update é publicado até o
-Épico 6** — por isso `updates.enabled: false` no `app.json`.
+`expo-updates` está ligado (`updates.enabled: true` + `updates.url` no
+`app.json`). Os builds saem por canal:
 
-O módulo é nativo: adicionar depois custaria rebuild e nova submissão às lojas,
-exatamente quando já houvesse gente instalada. O `eas init` já rodou — o
-`projectId` está em `app.json` — mas `updates.url` continua ausente porque
-`updates.enabled` é `false`: o campo entra junto com o primeiro `eas update`
-publicado, no Épico 6.
+| Perfil | Canal | Para quê |
+|---|---|---|
+| `development` | `development` | dev client |
+| `preview` | `preview` | APK do dogfooding |
+| `testflight` | `preview` | iPhone do dogfooding. É o `production` assinado para a loja, só com o canal trocado |
+| `production` | `production` | build do lançamento |
+
+**Só o canal `preview` recebe update** antes do Épico 6. O `production`
+continua sem publicação até lá (ADR-0007). Correção só de JavaScript chega
+nos dois celulares assim:
+
+```bash
+npx eas-cli update --channel preview --message "o que mudou"
+```
+
+O `runtimeVersion` segue a `version` do app (política `appVersion`), e um
+update só chega no build da mesma versão. Por isso, mudança nativa (lib nativa
+nova, SDK, permissão, ícone, plugin) pede três passos:
+
+1. subir `version` no `app.json`;
+2. fazer build `preview` (Android);
+3. fazer build `testflight` (iOS).
+
+Esquecer de subir a versão entrega JavaScript a um binário que não o suporta,
+e o app quebra na abertura.
+
+O número de build (`versionCode` / `buildNumber`) fica nos servidores do EAS
+(`cli.appVersionSource: "remote"`), e o `autoIncrement` do `production` e do
+`testflight` sobe esse número sozinho a cada build. O TestFlight recusa
+número repetido, e com a versão remota não é preciso commitar o `app.json` a
+cada build.
+
+O passo a passo do primeiro build iOS está em
+[guia-build-ios.md](guia-build-ios.md).
 
 > [!warning] OTA entrega só JavaScript
 > Trocar módulo nativo, versão de SDK ou permissão continua exigindo build e
