@@ -32,6 +32,41 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
 
 ---
 
+## Fila de execução (decidida em 2026-10-28)
+
+Duas trilhas correm em paralelo:
+- a do Bruno: contas e lojas, fora do código;
+- a do código.
+
+Quando um item fechar, marque aqui.
+
+**Trilha do Bruno**
+
+1. Mergear os PRs #9 (home-app) e #16 (prumoz-site). Os dois fazem o deploy tentar o SSH de novo.
+2. Criar o e-mail `@prumoz.com.br`, se ainda não existir, e pedir o D-U-N-S. São as fases 1–2 do
+   [guia do build iOS](apps/mobile/guia-build-ios.md).
+3. Inscrever a Prumoz no Apple Developer (fase 3). A inscrição entrega o Team ID.
+4. Fazer o primeiro build iOS e colocar o app no TestFlight dela (fases 5–7). Depende do B1.
+
+**Trilha de código.** A ordem é B1 → B2 → B3 → B5. O B4 entra assim que chegar o Team ID: é pequeno e
+pede build nativo, que pode sair junto com o primeiro build iOS.
+
+| # | Tarefa | Pronto quando | Depende de |
+|---|---|---|---|
+| B1 | Config de distribuição (ADR-0017): `com.prumoz.casa`, OTA ligado, perfil `testflight`, `ITSAppUsesNonExemptEncryption`, seção OTA do README | um APK novo instalado recebe um `eas update --channel preview` | — |
+| B2 | Portão de CI: `npm run verify` com o Postgres do compose, em todo PR e antes do deploy | PR com verify vermelho fica marcado; merge só deploya com verify verde | — |
+| B3 | Story 13a: cancelar convite e mostrar a validade | critério da 13a, no Épico 2 | B2 |
+| B4 | Story 13b: link + QR + abrir direto no app | critério da 13b, no Épico 2 | Team ID + B1 |
+| B5 | Épico 3, nesta ordem:<br>1. rodada de produto: o que são energia da casa, ofensiva, meta semanal e recompensa<br>2. quebra em stories<br>3. realtime: WebSocket + LISTEN/NOTIFY, com heartbeat abaixo dos 60 s de ociosidade do nginx<br>4. telas | DoD do Épico 3 | B2 |
+| B6 | E-mail pelo Resend: verificação + recuperar senha (ADR-0018) | antes do beta | B5 |
+| B7 | Épico 3b: lista de compras (ADR-0015) | DoD do 3b | B5 |
+
+**Antes de abrir o app para fora do círculo de teste:**
+- cópia do backup fora da VPS (ADR-0014);
+- e-mail (B6).
+
+---
+
 ## Épico 0 — Bootstrap: fundação local (0a) e produção (0b)
 
 > [!important] O Épico 0 foi cortado em dois (2026-08-28)
@@ -91,11 +126,11 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
   - Backup: cron diário com o primeiro dump; restore provado pelo `restore-teste.sh` na VPS.
   - Rate limit: a API enxerga o IP real atrás do proxy (provado com `X-Forwarded-For` falso).
   - APK de preview apontando para produção.
+  - Deploy automático: merge na `main` que toca o backend dispara o `deploy-vps.yml` (provado no
+    merge do PR #8, 2026-10-27).
   - Faltam:
-    - **provedor de e-mail**;
-    - **gate de `npm run verify` antes do deploy**;
-    - **segredos do workflow** no GitHub (`VPS_HOST`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`). Sem eles, o deploy
-      pela `main` falha; até lá, o deploy é à mão.
+    - **provedor de e-mail**: Resend, antes do beta (ADR-0018, item B6 da fila);
+    - **gate de `npm run verify` antes do deploy**: item B2 da fila.
 - **Prazo real:** antes do convite do **Épico 2** — é quando a segunda pessoa precisa alcançar a API.
 - **Skills:** `casa-infra-deploy`, `casa-tech-writer` (runbook).
 
@@ -113,8 +148,10 @@ primeiro, gamificação e dados sensíveis depois — mas **modelados desde o in
 - **Fora do escopo, deliberadamente** (decidido em 2026-08-29 — todos dependem de acesso externo):
   - **Apple Sign In → Épico 6.** Exige conta Apple Developer paga e build iOS; não roda em Expo Go. A
     coluna `apple_sub` nasce no schema agora para não virar migration depois.
-  - **Envio do e-mail de verificação → Épico 0b.** O token de 24 h é gerado e gravado no Épico 1; o
-    transporte é log no console até existir provedor de e-mail (o domínio existe desde o ADR-0014).
+  - **Verificação de e-mail → fora do Épico 1.** Planejado: o token de 24 h seria gerado no Épico 1, e
+    o transporte seria log no console até existir provedor de e-mail. **Não foi assim:** o token também
+    ficou fora; a rota `verify-email` espera o transporte (`apps/api/src/routes/auth.ts`). Token e
+    envio entram juntos no B6, pelo Resend (ADR-0018). Constatado em 2026-10-28.
   - **Ramo "tem convite" da Fase 0 → Épico 2.** Aceitar convite exige URL pública e deep link, que são
     0b + Épico 2. O Épico 1 entrega o **ramo do criador** ponta a ponta e só o *schema* do convite.
 - **DoD:** signup → cria casa → **casa povoada pelo template**; RLS impede ver dados de outra casa
@@ -219,7 +256,8 @@ alternativa maior de propósito:
 | 10 | UI | navegação em abas + aba Tarefas (Todas / Minhas / Livres) com concluir | Livres = só modo Aberta; Minhas = só as da pessoa; concluir reflete na lista sem recarregar a tela |
 | 11 | UI | FAB de adicionar + tela de tarefa (título, peso, modo, responsável, marcar detestada) | criar / editar / apagar num device físico; marcar detestada fora do Rodízio não oferece bônus |
 | 12 | UI | Fase 1 do onboarding: convidar → concluir 1 tarefa | dois moradores na casa, uma conclusão, pontos somam em "sua parte" e no total — e em nenhum lugar mais |
-| 13 | 🚧 0b | convite por **link** + **QR** + cancelar convite | **bloqueado**: exige URL pública e deep link (Épico 0b). Deep link abre a Fase 0 no ramo *tem convite*; cancelar invalida o código |
+| 13a | API + UI | cancelar convite + validade visível (dividida em 2026-10-28) | cancelar invalida o código na hora: migration nova com o privilégio e a policy só para isso, já que hoje `convites` só tem SELECT e INSERT; a tela mostra até quando o código vale (7 dias); código cancelado dá o mesmo erro de inexistente ou expirado |
+| 13b | 🚧 Apple | convite por **link** `https://casa.prumoz.com.br/convite/<código>` + **QR** | **espera o Team ID e o `com.prumoz.casa`** (ADR-0017):<br>• o link abre o app direto no ramo *tem convite* (universal link / App Link);<br>• os arquivos de `/.well-known/` são servidos pelo `vps-edge`, que hoje devolve 404 fora de `/api/`;<br>• sem o app instalado, o link cai numa página com o código;<br>• o QR é o mesmo link;<br>• pede build nativo |
 
 > [!note] Ordem de execução
 > 1→2 antes de tudo (a UI não vem antes da camada de dados). A story 8 é a única que pode rodar em
@@ -252,12 +290,30 @@ alternativa maior de propósito:
 - **Skills:** `casa-dominio-cooperacao` (invariante de não-ranking, lógica da meta e do streak),
   `casa-realtime`, `casa-mobile-dev`.
 
+## Épico 3b — Lista de compras
+
+- **Meta:** a casa faz o mercado junta, e o app tem um motivo para ser aberto toda semana (ADR-0015).
+- **Entregáveis:**
+  - lista de compras da casa: qualquer morador adiciona e marca item como comprado;
+  - sincronização ao vivo pelo canal realtime do Épico 3;
+  - terminar a lista oferece concluir a tarefa "Fazer mercado".
+- **DoD:**
+  - dois moradores no mercado veem a lista mudar ao vivo;
+  - item comprado não dá ponto: ponto vem só da tarefa "Fazer mercado";
+  - nenhuma tela, endpoint ou query conta itens por pessoa, e a guarda anti-ranking cobre esse caso;
+  - sem sinal, o app mostra que não sincronizou e não perde item em silêncio. O offline de verdade
+    é do Épico 6.
+- **Decide no começo:** onde a lista mora com as 4 abas fixas (decisão em aberto nº 11), com o Figma.
+- **Depende de:** Épico 3 (realtime).
+- **Skills:** `casa-dominio-tarefas`, `casa-realtime`, `casa-mobile-dev`, `casa-backend-dev`.
+
 ## Épico 4 — Objetivos & dados sensíveis anonimizados
 
 - **Meta:** capturar preferências e conforto **sem quebrar a confiança**.
 - **Entregáveis:** aba **Objetivos** (poupança R$ + checklist; só aspirações "pra casa" viram
-  objetivo); captura de tarefa que curte/detesta; **como dividir + frequências**; **incômodos →
-  peso agregado sem atribuição**; **pulso semanal → termômetro anônimo, só humor** (ADR-0011);
+  objetivo); captura de tarefa que curte/detesta; **como dividir + frequências** (que também fazem
+  das contas fixas tarefa mensal — "Pagar a luz" em rodízio, sem valor nem vencimento, ADR-0016);
+  **incômodos → peso agregado sem atribuição**; **pulso semanal → termômetro anônimo, só humor** (ADR-0011);
   **sobrecarga inferida** do peso de tarefas concluídas vs. distribuição, sem coluna sensível nova;
   detecção automática de tarefa universalmente detestada, ligando o bônus do ADR-0010.
 - **DoD:** frustração influencia a distribuição com **zero atribuição**; aspiração "pra mim" nunca
@@ -287,10 +343,18 @@ alternativa maior de propósito:
 - **Meta:** um beta que você e sua esposa usam de verdade (dogfooding).
 - **Entregáveis:** acessibilidade, estados vazios, offline, performance; build **EAS** p/ lojas;
   revisar o **runbook de operação da VPS** do 0b (restore, rotação de segredo, update de imagem);
-  **ligar a publicação OTA** que ficou instalada e adormecida desde o 0a (ADR-0007); decidir **E2E**
+  **ligar a publicação OTA no canal `production`** (ADR-0007; o canal `preview` foi liberado antes,
+  ADR-0017); decidir **E2E**
   (Maestro × Detox); *(opcional)* analytics (PostHog); **decisão de modelo de negócio**;
   **política LGPD + termos**; **Sign in with Apple** (herdado do Épico 1 — exige conta Apple Developer
   paga e build iOS; a App Store passa a exigi-lo porque o app oferece Google).
+- **Antecipado (ADR-0017, 2026-10-28):** contas das lojas em nome da Prumoz (organização, D-U-N-S),
+  TestFlight interno para o iPhone do dogfooding e OTA no canal `preview`.
+- **Checklist da revisão da App Store** (o TestFlight interno não cobra, a loja cobra — ADR-0017):
+  - excluir a conta pelo próprio app (diretriz 5.1.1(v)), junto da decisão nº 10;
+  - URL da política de privacidade + questionário de privacidade no App Store Connect;
+  - Sign in with Apple, se houver login com Google;
+  - `ITSAppUsesNonExemptEncryption: false` no `app.json` (o app só usa HTTPS).
 - **DoD:** beta instalável e usável pelos dois; gaps sinalizáveis do manifesto endereçados ou
   agendados.
 - **Depende de:** todos.

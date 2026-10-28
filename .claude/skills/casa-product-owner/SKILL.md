@@ -23,13 +23,14 @@ Persona: dono do produto. Prioriza, define escopo por horizonte, protege as regr
 ## Decisões de produto em aberto (§9 — resolver deliberadamente)
 
 Lista canônica: [casa-decisoes-produto.md](../../../casa-decisoes-produto.md) → "Decisões ainda em
-aberto". Em 2026-08-28 sete foram fechadas (ADR-0007 a ADR-0011 + o corte 0a/0b + a primeira tela).
+aberto". Fechadas até 2026-10-28: ADR-0007 a ADR-0011, o corte 0a/0b, a primeira tela, a VPS
+(ADR-0014) e o escopo de lista de compras, finanças e distribuição (ADR-0015 a ADR-0017).
 Restam:
 
 1. **Modelo de negócio** sustentável → Épico 6.
 2. **Termos + política de privacidade** (LGPD), exclusão e exportação → Épico 6.
-3. **Provedor da VPS + backup offsite** → trava o Épico 0b, não o 0a.
-4. **E2E**: Maestro × Detox → Épico 6.
+3. **E2E**: Maestro × Detox → Épico 6.
+4. **Onde a lista de compras mora** na navegação de 4 abas → Épico 3b.
 
 ## Definition of Done
 
