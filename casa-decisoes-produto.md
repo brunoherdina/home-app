@@ -37,6 +37,10 @@ Skills `casa-*` referenciam este arquivo; se um ADR mudar, as skills afetadas mu
 | [0012](#adr-0012--identidade-é-o-morador-escopo-de-casa-por-função-sql) | Identidade é o morador; escopo de casa por função SQL | ✅ Aceito |
 | [0013](#adr-0013--role-casa_auth-para-as-rotas-sem-identidade) | Role `casa_auth` para as rotas sem identidade | ✅ Aceito |
 | [0014](#adr-0014--produção-na-vps-do-improvisa-ai-atrás-do-vps-edge) | Produção na VPS do `improvisa-ai`, atrás do `vps-edge`; backup só local | ✅ Aceito |
+| [0015](#adr-0015--lista-de-compras-compartilhada-depois-do-épico-3) | Lista de compras compartilhada, depois do Épico 3; item não dá ponto | ✅ Aceito |
+| [0016](#adr-0016--finanças-poupança-coletiva-e-contas-como-tarefa) | Finanças: poupança coletiva e contas como tarefa, sem divisão de despesas | ✅ Aceito |
+| [0017](#adr-0017--distribuição-testflight-contas-da-prumoz-e-ota-de-teste) | Distribuição: TestFlight interno, contas de loja da Prumoz, OTA no canal `preview` | ✅ Aceito |
+| [0018](#adr-0018--e-mail-transacional-pelo-resend-antes-do-beta) | E-mail transacional pelo Resend, antes do beta | ✅ Aceito |
 
 ---
 
@@ -282,7 +286,7 @@ comum para telas dessincronizadas.
 
 ## ADR-0007 — OTA instalado no bootstrap
 
-**Data:** 2026-08-28 · **Status:** ✅ Aceito
+**Data:** 2026-08-28 · **Status:** ✅ Aceito · **Emendado pelo** [ADR-0017](#adr-0017--distribuição-testflight-contas-da-prumoz-e-ota-de-teste) (OTA liberado antes, só no canal `preview`)
 
 ### Contexto
 
@@ -578,6 +582,225 @@ copia o dump dele para um S3. Um bucket e um usuário IAM novos na mesma conta r
 
 ---
 
+## ADR-0015 — Lista de compras compartilhada, depois do Épico 3
+
+**Data:** 2026-10-28 · **Status:** ✅ Aceito · **Depende do** [ADR-0004](#adr-0004--realtime-por-listennotify--websocket) e do [ADR-0010](#adr-0010--rodízio-com-bônus-de-pontos-para-tarefa-detestada)
+
+### Contexto
+
+A lista de compras não estava em nenhum épico, e é o recurso mais usado do Cozi e do OurHome. Ela
+tem uso semanal: numa semana sem tarefa pendente, é o motivo para alguém abrir o app. Isso pesa no
+dogfooding e na retenção.
+
+Ela não é uma das cinco features do diferencial (§1 do manifesto), então não testa a tese. Cada épico
+que entra antes do 5 atrasa esse teste.
+
+A lista depende de duas coisas que ainda não existem:
+- **realtime**: duas pessoas no mercado ao mesmo tempo precisam ver a lista mudar ao vivo. Isso chega
+  no Épico 3, pelo canal do ADR-0004;
+- **offline**: mercado costuma ter sinal ruim. Isso só chega no Épico 6.
+
+### Decisão
+
+- Entra como **Épico 3b**, logo depois do Épico 3, em versão simples:
+  - a lista é da casa;
+  - qualquer morador adiciona item e marca como comprado;
+  - a sincronização usa o canal realtime do Épico 3.
+- **Item não dá ponto.** Ponto continua vindo só de tarefa.
+  - A ida ao mercado é a tarefa "Fazer mercado", com peso, modo e rodízio como qualquer outra.
+  - Terminar a lista oferece concluir essa tarefa.
+- Nenhuma tela, endpoint ou query conta itens por pessoa (§2, regra 1).
+
+### Alternativas descartadas
+
+- **Antes do Épico 3:** sem realtime e sem offline, a lista falharia justo dentro do mercado. Além
+  disso, adiaria o núcleo cooperativo.
+- **Depois do beta:** o dogfooding ficaria sem motivo para abrir o app nas semanas sem tarefa.
+- **Ponto por item comprado:** vira corrida para marcar o item antes do outro, a competição que o §2
+  proíbe. Também incentiva quebrar uma compra em muitos itens.
+- **Lista fora dos pontos:** a ida ao mercado sumiria de "sua parte" se ninguém criasse a tarefa à mão.
+
+### Consequências
+
+- Os Épicos 4 e 5 andam um épico curto para trás, e o teste da tese (Épico 5) junto com eles.
+- Fica em aberto onde a lista mora, já que as 4 abas do §5 são fixas (decisão nº 11). Decidir com o
+  Figma no começo do 3b.
+- A guarda anti-ranking (`npm run guards`) ganha o caso "itens contados por pessoa" junto com a
+  feature, não em review depois.
+- Até o offline do Épico 6, a lista sem sinal não sincroniza. O app precisa mostrar isso, e não pode
+  perder um item adicionado sem avisar.
+
+---
+
+## ADR-0016 — Finanças: poupança coletiva e contas como tarefa
+
+**Data:** 2026-10-28 · **Status:** ✅ Aceito
+
+### Contexto
+
+O planejado em finanças era só a poupança em R$ da aba Objetivos (Épico 4), para aspirações "pra casa".
+
+Dividir despesas (quem pagou o quê, quem deve quanto a quem, estilo Splitwise ou Flatastic) é dor real
+em república. Mas essa feature:
+- mostra saldo por pessoa e tem tom de cobrança, o oposto do "tom cooperativo, não cobrança" do §5;
+- põe dado financeiro por pessoa sob RLS e LGPD;
+- é quase outro produto, e um épico grande.
+
+### Decisão
+
+- Finanças no v1 é a **poupança coletiva** em Objetivos (Épico 4), como já previsto.
+- **Contas fixas da casa são tarefa.** Aluguel, luz e internet viram "Pagar a luz", em rodízio, como
+  qualquer outra tarefa.
+  - A repetição mensal vem com as frequências do Épico 4.
+  - O lembrete vem com o Épico 5.
+  - Não há campo de valor, vencimento ou comprovante.
+- **Divisão de despesas fica fora do v1.** Voltar a ela exige um ADR próprio que diga como saldo por
+  pessoa convive com o §2.
+
+### Consequências
+
+- Nenhuma feature nova e nenhum dado financeiro por pessoa no banco.
+- O Casa não registra valor nem quem pagou. Uma república que racha conta continua usando outro app
+  para isso.
+- Até o Épico 4, "Pagar a luz" já pode existir, mas aparece sempre na lista, sem um "vence este mês".
+  Sem frequência, concluir é só um evento (decisão de escopo 1 do Épico 2).
+
+---
+
+## ADR-0017 — Distribuição: TestFlight, contas da Prumoz e OTA de teste
+
+**Data:** 2026-10-28 · **Status:** ✅ Aceito · **Emenda o** [ADR-0007](#adr-0007--ota-instalado-no-bootstrap) · Antecipa parte do Épico 6
+
+### Contexto
+
+No dogfooding, o Bruno usa Android (APK do perfil `preview`) e a esposa usa iPhone. O app fala com
+produção desde `b5b0c25`.
+
+Sem Mac, o EAS compila e assina o build iOS na nuvem. Mas o iPhone só instala o que a Apple assina,
+e isso exige o Apple Developer Program (US$ 99/ano).
+
+Quatro caminhos foram avaliados:
+- **TestFlight** — escolhido;
+- **ad hoc** — descartado (ver a decisão);
+- **Expo Go** — não serve para o uso diário dela:
+  - o app só abre com o PC do Bruno servindo o código;
+  - o SDK 57 sai do Expo Go da App Store semanas depois do SDK 58, lançado em 2026-10-15;
+- **adiar o iOS** — deixaria o loop de dois moradores sem uso real.
+
+Hoje cada correção pede um build novo, com fila de ~40 min no plano gratuito do EAS. No iOS, soma-se o
+processamento da Apple. O ADR-0007 instalou o OTA mas proibiu publicar antes do Épico 6.
+
+### Decisão
+
+- **O iPhone da esposa recebe o app pelo TestFlight, em teste interno.**
+  - Ela entra como usuária do App Store Connect.
+  - O teste interno não passa por revisão da Apple e fica disponível assim que o build é processado.
+  - É o mesmo caminho da loja (`eas build` → `eas submit` → App Store Connect), ensaiado antes do
+    lançamento.
+  - O ad hoc foi descartado por dois motivos: é uma assinatura separada, abandonada no lançamento, e
+    pede Modo Desenvolvedor no iPhone dela.
+- **As contas das duas lojas ficam em nome da Prumoz, como organização** (CNPJ de LTDA ou SLU):
+  - Apple: US$ 99/ano;
+  - Google Play: US$ 25, uma vez.
+  - Conta de pessoa física foi descartada por dois motivos:
+    - a loja mostraria o nome do Bruno como vendedor;
+    - no Play, conta pessoal nova precisa de um teste fechado com 12 testadores por 14 dias antes de
+      publicar. Conta de organização é isenta.
+- **O identificador do app passa de `com.brunoherdina.casa` para `com.prumoz.casa`**, no iOS e no
+  Android, antes do primeiro envio a qualquer loja.
+  - Depois desse envio, o identificador não muda mais. No Play, ele aparece no link do app (`?id=`).
+  - Custo hoje: o APK atual vira outro app. Instala o novo, apaga o velho e faz login de novo; os dados
+    estão no servidor. As credenciais do EAS são geradas de novo.
+- **O OTA é liberado antes do Épico 6, só no canal `preview`**, o dos aparelhos de teste. O canal
+  `production` continua sem update até o Épico 6, como o ADR-0007 decidiu.
+  - O build do TestFlight sai de um perfil próprio: assinado para a loja, mas no canal `preview`.
+    Ele estende `production` e troca só o canal.
+  - O perfil `production` fica reservado para o build do lançamento.
+  - O caminho até a loja é o mesmo; os dois builds diferem só no canal.
+
+### Riscos
+
+- **Não está confirmado que a Apple aceita uma SLU como organização.**
+  - A Apple manda "sole proprietor/single person business" entrar como pessoa física.
+  - Uma LTDA com mais de um sócio é organização sem dúvida. Uma SLU, com um sócio só, é o caso ambíguo.
+  - Se a Apple recusar, a saída é a conta individual, com o nome do Bruno como vendedor. O Play pode
+    seguir como organização.
+- **A loja mostra a razão social, não o nome fantasia.** A Apple não aceita nome fantasia. Se a razão
+  social não contiver "Prumoz", não é "Prumoz" que aparece.
+- **O TestFlight dela espera a verificação da empresa.** A ordem é:
+  1. pedir o D-U-N-S (gratuito, leva de dias a semanas);
+  2. fazer a adesão da organização na Apple;
+  3. criar o app no App Store Connect;
+  4. adicionar a esposa como usuária;
+  5. publicar o primeiro build.
+
+### Consequências
+
+- O D-U-N-S é um só e serve às duas lojas. Basta pedir uma vez.
+- Antes do primeiro OTA, os dois aparelhos precisam de um build novo. O `app.json` tem
+  `updates.enabled: false`, então nem o APK atual nem um build iOS feito assim recebem update.
+- O `runtimeVersion` segue a política `appVersion`:
+  - um update só chega no build da mesma versão;
+  - uma mudança nativa (módulo, SDK, permissão) exige subir a versão e fazer build novo nas duas
+    plataformas, como o ADR-0007 já avisava.
+- Um bundle quebrado publicado no `preview` chega nos dois celulares de uma vez. Com dois usuários, o
+  preço é aceito. Abrir o app para mais testadores pede revisitar isto.
+- Build do TestFlight expira em 90 dias. Com desenvolvimento ativo, isso não pesa.
+- O que a revisão da App Store exige e o teste interno não vira checklist do Épico 6:
+  - excluir a conta pelo próprio app (diretriz 5.1.1(v)), ligado à decisão nº 10;
+  - URL da política de privacidade e questionário de privacidade no App Store Connect;
+  - Sign in with Apple, se o app oferecer login com Google (já previsto no Épico 6);
+  - `ITSAppUsesNonExemptEncryption: false` no `app.json`. O app só usa HTTPS, e com isso a declaração
+    de criptografia não volta a cada build.
+
+---
+
+## ADR-0018 — E-mail transacional pelo Resend, antes do beta
+
+**Data:** 2026-10-28 · **Status:** ✅ Aceito · **Completa o** [ADR-0003](#adr-0003--auth-jwt-próprio-herdado-do-improvisa-ai) (verificação de e-mail) · Resolve o "provedor de e-mail" do Épico 0b
+
+### Contexto
+
+A API não envia e-mail nenhum. Em 2026-10-28 também ficou claro que o token de verificação de 24 h
+do ADR-0003 não existe. O roadmap dizia que ele foi gerado no Épico 1, mas a rota `verify-email` ficou
+de fora junto com o transporte. Também não existe "esqueci a senha".
+
+Para os dois moradores do dogfooding isso não trava nada: uma senha esquecida se resolve à mão na VPS.
+Para qualquer pessoa de fora, é obrigatório.
+
+O `improvisa-ai` já envia e-mail pelo Resend (`backend/app/services/email_service.py`). O plano
+gratuito tem cerca de 3 mil e-mails por mês.
+
+### Decisão
+
+- **Provedor:** Resend, o mesmo do `improvisa-ai`.
+- **Quando:** depois do Épico 3 e antes do beta, como item B6 da fila de execução. É requisito para
+  abrir o app fora do círculo de teste.
+- **Escopo:** o token de verificação de 24 h do ADR-0003, junto com o envio, e a recuperação de senha.
+  Os dois entram na mesma tarefa.
+- O remetente usa o domínio da Prumoz. O endereço exato e os registros SPF e DKIM no DNS da Hostinger
+  são definidos na tarefa.
+
+### Alternativas descartadas
+
+- **Resend logo depois do CI:** fecharia o 0b mais cedo, mas empurraria o Épico 3 por algo que dois
+  usuários conhecidos não precisam.
+- **SMTP da Hostinger:** hospedagem tem limite de envio e entrega pior, e a senha de uma caixa de
+  e-mail viraria segredo da API.
+- **Amazon SES:** precisa pedir saída do sandbox e configurar IAM e domínio, para um volume que hoje é
+  quase zero.
+
+### Consequências
+
+- Até o B6 não existe recuperação de senha. Uma senha esquecida de um dos dois se resolve à mão: gerar
+  o hash argon2 e atualizar no banco de produção.
+- O Resend passa a tratar o e-mail dos moradores. Ele entra na política de privacidade como operador
+  de dados (decisão nº 10).
+- Entra um segredo novo na VPS (`RESEND_API_KEY`). Ele é gerado no painel do Resend e gravado direto
+  no `infra/.env` da VPS, nunca por chat.
+
+---
+
 ## Decisões ainda em aberto
 
 ### Técnicas
@@ -597,7 +820,8 @@ Fechada em 2026-10-26: nº 5 → [ADR-0014](#adr-0014--produção-na-vps-do-impr
 | # | Pergunta | Bloqueia |
 |---|---|---|
 | 8 | Modelo de negócio sustentável | Épico 6 |
-| 10 | Termos de uso + política de privacidade (LGPD), exclusão e exportação de dados | Épico 6 |
+| 10 | Termos de uso + política de privacidade (LGPD), exclusão e exportação de dados — a App Store também exige excluir a conta pelo app (ADR-0017) | Épico 6 |
+| 11 | Onde a lista de compras mora na navegação de 4 abas ([ADR-0015](#adr-0015--lista-de-compras-compartilhada-depois-do-épico-3)) | Épico 3b |
 
 Fechadas em 2026-08-28: nº 6 → [ADR-0011](#adr-0011--pulso-semanal-só-de-humor) ·
 nº 7 → [ADR-0010](#adr-0010--rodízio-com-bônus-de-pontos-para-tarefa-detestada) ·
