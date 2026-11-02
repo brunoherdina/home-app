@@ -49,6 +49,12 @@ jobs:
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps
           chmod 600 ~/.ssh/vps
           printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # Às vezes o pacote se perde entre o runner e a Hostinger e o connect
+          # fica pendurado até o timeout do TCP (~2 min): o primeiro deploy
+          # (2026-10-27) morreu assim no `git push`, e o re-run passou. O
+          # improvisa viu o mesmo em 2026-08-02 e 2026-10-16 e usa estes valores
+          # na action vps-ssh dele. ServerAlive mantém a sessão do deploy viva
+          # enquanto o build roda calado.
           cat > ~/.ssh/config <<CFG
           Host vps
             HostName $VPS_HOST
@@ -56,6 +62,10 @@ jobs:
             IdentityFile ~/.ssh/vps
             IdentitiesOnly yes
             StrictHostKeyChecking yes
+            ConnectTimeout 20
+            ConnectionAttempts 3
+            ServerAliveInterval 30
+            ServerAliveCountMax 10
           CFG
 
       # Deploya o commit exato do run. Sem `--force`: re-rodar um run antigo é
