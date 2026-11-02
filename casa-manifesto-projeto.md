@@ -158,6 +158,7 @@ O criador absorve o setup pesado diluído; o convidado entra ultra-leve. (Ver §
 | **1** | Identidade & Casa | auth, modelo de dados, RLS, onboarding **Fase 0** |
 | **2** | Tarefas & Divisão | aba Tarefas, pontos/modos, convite, onboarding **Fase 1** |
 | **3** | Cooperativo | Início (anel) + aba Casa, nível, ofensiva, meta coletiva |
+| **3b** | Lista de compras | lista da casa ao vivo; ponto só pela tarefa "Fazer mercado" (ADR-0015) |
 | **4** | Objetivos & dados sensíveis anonimizados | Objetivos, incômodos agregados, pulso anônimo (**Fase 2**) |
 | **5** | Notificações & nudges progressivos | notif. pessoal/parcimoniosa; motor de nudges D0–D7 |
 | **6** | Polimento, mobile & pré-lançamento | a11y, EAS, LGPD, modelo de negócio, beta |
@@ -206,18 +207,20 @@ tem um épico que a exercita**.
 
 ## 9. Decisões de produto em aberto (de `casa-decisoes-produto.md`)
 
-Rodada de decisões de 2026-08-28 fechou sete. Restam:
+Restam:
 
 1. **Modelo de negócio** sustentável → Épico 6.
-2. **Termos de uso + política de privacidade** (LGPD), exclusão e exportação → Épico 6.
-3. **Provedor da VPS + backup offsite** → trava o Épico 0b, não o 0a.
-4. **E2E**: Maestro × Detox, a decidir junto com o `rimaai` → Épico 6.
+2. **Termos de uso + política de privacidade** (LGPD), exclusão e exportação → Épico 6. A App Store
+   exige excluir a conta pelo próprio app (ADR-0017).
+3. **E2E**: Maestro × Detox, a decidir junto com o `rimaai` → Épico 6.
+4. **Onde a lista de compras mora** na navegação de 4 abas (ADR-0015) → Épico 3b.
 
-Fechadas: pulso só humor (ADR-0011) · rodízio + bônus (ADR-0010) · OTA instalado no bootstrap
-(ADR-0007) · refresh token antecipado pro Épico 1 (ADR-0008) · React Hook Form + zod (ADR-0009) ·
-primeira tela a prototipar = **criador da Fase 0**.
-
-Nenhuma das restantes bloqueia o Épico 0a.
+Fechadas em 2026-08-28: pulso só humor (ADR-0011) · rodízio + bônus (ADR-0010) · OTA instalado no
+bootstrap (ADR-0007) · refresh token antecipado pro Épico 1 (ADR-0008) · React Hook Form + zod
+(ADR-0009) · primeira tela a prototipar = **criador da Fase 0**.
+Fechada em 2026-10-26: provedor da VPS, com backup só local como risco aceito (ADR-0014).
+Fechadas em 2026-10-28: lista de compras depois do Épico 3 (ADR-0015) · finanças sem divisão de
+despesas (ADR-0016) · TestFlight, contas de loja da Prumoz e OTA no canal `preview` (ADR-0017).
 
 ---
 

@@ -201,7 +201,10 @@ silêncio. Procedimento provado em 2026-10-26 na pilha de produção local.
 
 ## Ainda não está aqui
 
-Provedor de e-mail (a verificação gerada no Épico 1 ainda vai para o log), cópia
-do backup fora da VPS (risco aceito, ADR-0014) e o gate de testes antes do
-deploy. A imagem da API roda `tsx` direto em produção — trocar por build
+Faltam três coisas:
+
+- **E-mail.** Não existe verificação nem recuperação de senha. O token e o envio
+  entram juntos, pelo Resend (ADR-0018).
+- **Cópia do backup fora da VPS.** Risco aceito no ADR-0014.
+- **Gate de testes antes do deploy.** É o item B2 da fila do roadmap. A imagem da API roda `tsx` direto em produção — trocar por build
 compilado quando o tamanho importar, não antes.

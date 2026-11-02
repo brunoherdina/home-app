@@ -136,6 +136,8 @@ ponto aqui é mandar o arquivo pelo WhatsApp.
 npx eas-cli build --platform android --profile preview
 ```
 
+iOS, sem Mac, pelo TestFlight: passo a passo em [guia-build-ios.md](guia-build-ios.md) (ADR-0017).
+
 Duas coisas ficam **congeladas no APK** no momento do build, e as duas moram no
 `eas.json`:
 
