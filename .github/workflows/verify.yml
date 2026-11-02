@@ -1,0 +1,73 @@
+# Portão de CI (item B2 da fila): `npm run verify` contra o Postgres do compose.
+#
+# Roda em todo push fora da main. O status fica no commit, então o PR aberto
+# daquele branch mostra o verify vermelho ou verde sem precisar de um gatilho
+# `pull_request` em dobro. Na main quem chama é o deploy-vps.yml (workflow_call):
+# o deploy só sai se este job passar.
+#
+# O banco é o mesmo compose do desenvolvimento local, com initdb e roles de
+# verdade: `check:roles` e `check:rls` provam o contrato do ADR-0002 no catálogo
+# do Postgres, e isso não existe em service container genérico.
+name: Verify
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_call:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Senhas descartáveis, sorteadas a cada run. Hex, não base64: um `/` na
+      # senha quebra a URL do Postgres (ver infra/.env.example).
+      - name: infra/.env do CI
+        run: |
+          senha() { openssl rand -hex 24; }
+          owner=$(senha); app=$(senha); auth=$(senha)
+          cat > infra/.env <<ENV
+          POSTGRES_SUPERUSER=casa_admin
+          POSTGRES_SUPERUSER_PASSWORD=$(senha)
+          POSTGRES_DB=casa
+          POSTGRES_PORT=5432
+          CASA_OWNER_PASSWORD=$owner
+          CASA_APP_PASSWORD=$app
+          CASA_AUTH_PASSWORD=$auth
+          DATABASE_URL=postgres://casa_app:$app@localhost:5432/casa
+          AUTH_DATABASE_URL=postgres://casa_auth:$auth@localhost:5432/casa
+          MIGRATION_DATABASE_URL=postgres://casa_owner:$owner@localhost:5432/casa
+          JWT_SECRET=$(openssl rand -hex 48)
+          ACCESS_TTL_SEGUNDOS=900
+          REFRESH_TTL_DIAS=60
+          REFRESH_GRACA_SEGUNDOS=30
+          PORT=3333
+          HOST=127.0.0.1
+          NODE_ENV=test
+          PROXY_CONFIAVEL=
+          ENV
+
+      - name: Postgres do compose
+        run: docker compose -f infra/docker-compose.yml --env-file infra/.env up -d --wait postgres
+
+      - run: npm ci
+
+      - name: Migrations
+        run: npm run db:migrate -w @casa/api
+
+      - run: npm run verify
+
+      # Fora do `verify` porque reescreve o schema (up → down → up) e leva mais
+      # tempo; no CI o banco é descartável, então roda sempre.
+      - run: npm run check:migration

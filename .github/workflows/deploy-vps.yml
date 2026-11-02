@@ -20,6 +20,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/deploy-vps.yml"
+      - ".github/workflows/verify.yml"
   workflow_dispatch:
 
 # Dois deploys ao mesmo tempo disputariam o mesmo container. Sem cancelar o que
@@ -29,7 +30,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Portão (B2): o mesmo verify dos branches, contra o commit que vai subir.
+  verify:
+    uses: ./.github/workflows/verify.yml
+
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
