@@ -32,8 +32,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
              * abre e falha em toda request com um erro de rede genérico — o
              * sintoma que manda procurar no lugar errado.
              *
-             * `preview` e `production` falam com https://casa.prumoz.com.br
-             * (ADR-0014) e ficam SEM a permissão: cleartext ligado num APK que
+             * `preview`, `testflight` e `production` falam com
+             * https://casa.prumoz.com.br (ADR-0014) e ficam SEM a permissão: cleartext ligado num APK que
              * anda por aí transforma qualquer Wi-Fi hostil em leitura de token.
              */
             usesCleartextTraffic: falaComApiNaLan,

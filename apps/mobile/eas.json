@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 12.0.0"
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -20,6 +21,10 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://casa.prumoz.com.br"
       }
+    },
+    "testflight": {
+      "extends": "production",
+      "channel": "preview"
     },
     "production": {
       "autoIncrement": true,
