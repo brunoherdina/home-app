@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import {
   ALFABETO_DO_CODIGO,
   DIAS_DE_VALIDADE_DO_CONVITE,
@@ -79,7 +79,7 @@ export async function criaConvite(db: CasaDb): Promise<Convite> {
           ${expiraEm}
         )
       `)
-      return { codigo }
+      return { codigo, expiraEm: expiraEm.toISOString() }
     } catch (erro) {
       // Só a colisão é retentável. Falha de policy, de conexão ou de qualquer
       // outra coisa sobe — insistir sobre ela só multiplicaria o mesmo erro.
@@ -88,6 +88,32 @@ export async function criaConvite(db: CasaDb): Promise<Convite> {
   }
 
   throw new Error(`não foi possível sortear um código livre em ${TENTATIVAS} tentativas`)
+}
+
+/**
+ * `DELETE /api/convites/:codigo` — cancelar (story 13a).
+ *
+ * Nenhum `where` de casa, de autor ou de uso aqui: quem decide o que pode ser
+ * apagado é a policy de 0008 (própria casa, quem emitiu, ainda não usado). O
+ * handler só distingue "apagou" de "a policy não deixou nada para apagar".
+ *
+ * Zero linhas vira 404 com mensagem própria, e não o `CONVITE_INVALIDO` do
+ * aceite: quem cancela é de dentro da casa e emitiu o código, então dizer que
+ * ele já foi usado não entrega nada a quem adivinha — e é o que a pessoa
+ * precisa saber para não achar que barrou alguém que já entrou.
+ */
+export async function cancelaConvite(db: CasaDb, codigo: string): Promise<void> {
+  const apagados = await db
+    .delete(convites)
+    .where(eq(convites.codigo, codigo))
+    .returning({ codigo: convites.codigo })
+  if (apagados.length === 0) {
+    throw new ErroHttp(
+      404,
+      'CONVITE_NAO_CANCELAVEL',
+      'Esse código já foi usado ou não existe mais.',
+    )
+  }
 }
 
 /**

@@ -66,6 +66,7 @@ FABIO='66666666-6666-6666-6666-666666666666'
 # Só símbolos do alfabeto de convite (contracts/convite.ts) — código com 'O' ou
 # 'I' aqui ensinaria o formato errado para quem copiar daqui.
 CODIGO='SMKE12'
+CODIGO_CANCELADO='SMKE34'
 
 limpa() {
   como_owner "drop table if exists smoke_rls" >/dev/null 2>&1 || true
@@ -273,6 +274,23 @@ afirma "Erica (sem casa) também não vê convite nenhum" "0" \
 contem "casa_app não consome convite por fora da função" "permission denied" \
   "$(como_app "begin; set local app.current_user_id = '$ANA'; update convites set usado_em = now(); commit;")"
 
+# 16b. Cancelar (migration 0008) é DELETE escopado por policy: a policy filtra
+# as linhas, então negar aparece como zero apagadas, não como erro. Código
+# próprio para não consumir o $CODIGO que a asserção 17 usa.
+como_app "begin; set local app.current_user_id = '$ANA';
+          insert into convites (codigo, casa_id, criado_por, expira_em)
+          values ('$CODIGO_CANCELADO', casa_atual(), '$ANA', now() + interval '1 day'); commit;" >/dev/null
+cancela() { # cancela <morador> <código> → quantas linhas a policy deixou apagar
+  como_app "begin; set local app.current_user_id = '$1';
+            with apagado as (delete from convites where codigo = '$2' returning 1)
+            select count(*) from apagado; commit;" | tr -d '[:space:]'
+}
+afirma "Bruno (outra casa) não cancela o convite da Ana" "0" "$(cancela "$BRU" "$CODIGO_CANCELADO")"
+afirma "Carla (mesma casa) também não: só quem emitiu cancela" "0" "$(cancela "$CARLA" "$CODIGO_CANCELADO")"
+afirma "Ana cancela o próprio convite" "1" "$(cancela "$ANA" "$CODIGO_CANCELADO")"
+contem "código cancelado recebe a mesma recusa de inexistente" "convite inválido" \
+  "$(como_app "begin; set local role casa_app; set local app.current_user_id = '$FABIO'; select entra_na_casa('$CODIGO_CANCELADO'); commit;")"
+
 # 17. O caminho feliz e o uso único, em sequência.
 afirma "Erica entra na casa A pelo código e passa a ver os 3 moradores" "3" \
   "$(como_app "begin; set local role casa_app; set local app.current_user_id = '$ERICA';
@@ -281,6 +299,8 @@ contem "e o mesmo código não serve para o Fabio" "convite inválido" \
   "$(como_app "begin; set local role casa_app; set local app.current_user_id = '$FABIO'; select entra_na_casa('$CODIGO'); commit;")"
 afirma "Fabio continua sem casa" "0" \
   "$(como_app "begin; set local app.current_user_id = '$FABIO'; select count(*) from casas; commit;" | tr -d '[:space:]')"
+# Convite usado é o registro de quem entrou: cancelar depois não apaga nada.
+afirma "Ana não cancela convite já usado" "0" "$(cancela "$ANA" "$CODIGO")"
 
 # 18. Código inexistente e código já usado dão a MESMA recusa — separar os dois
 # diria a quem adivinha que acertou o sorteio e chegou tarde.

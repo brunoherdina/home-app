@@ -69,13 +69,22 @@ export const entrarComCodigoSchema = z.object({
 /**
  * Resposta de `POST /api/convites`.
  *
- * Só o código. Nem `casaId` (quem pede já está na casa, e devolver o uuid dela
- * num payload que vai para o WhatsApp é vazar identificador sem motivo) nem
- * `expiraEm` — a validade é constante e vive em `DIAS_DE_VALIDADE_DO_CONVITE`,
- * então serializá-la só criaria duas fontes para o mesmo número.
+ * Sem `casaId`: quem pede já está na casa, e devolver o uuid dela num payload
+ * que vai para o WhatsApp é vazar identificador sem motivo.
+ *
+ * `expiraEm` entrou com a story 13a: a tela mostra a DATA até quando o código
+ * vale, e essa data é a que o servidor gravou. Calcular no app a partir de
+ * `DIAS_DE_VALIDADE_DO_CONVITE` daria a mesma resposta só enquanto relógio do
+ * celular e servidor concordarem.
  */
 export const conviteSchema = z.object({
   codigo: z.string(),
+  expiraEm: z.iso.datetime(),
+})
+
+/** Parâmetro de `DELETE /api/convites/:codigo` — cancelar (story 13a). */
+export const parametrosDeConviteSchema = z.object({
+  codigo: codigoDeConviteSchema,
 })
 
 /** Resposta de `POST /api/casas/entrar`: a casa em que a pessoa acabou de entrar. */

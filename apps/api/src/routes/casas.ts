@@ -6,8 +6,9 @@ import {
   conviteSchema,
   criarCasaSchema,
   entrarComCodigoSchema,
+  parametrosDeConviteSchema,
 } from '@casa/contracts'
-import { criaConvite, entraComConvite } from '../casa/convite.js'
+import { cancelaConvite, criaConvite, entraComConvite } from '../casa/convite.js'
 import { criaCasa, leCasaPovoada } from '../casa/servico.js'
 import { ErroHttp } from '../erros.js'
 import { exigeIdentidade } from '../plugins/exigeIdentidade.js'
@@ -59,6 +60,12 @@ export const rotasCasa: FastifyPluginAsync = async (app) => {
   app.post('/convites', async (request, reply) => {
     const convite = await request.withUser((db) => criaConvite(db))
     return reply.status(201).send(conviteSchema.parse(convite))
+  })
+
+  app.delete('/convites/:codigo', async (request, reply) => {
+    const { codigo } = valida(parametrosDeConviteSchema, request.params)
+    await request.withUser((db) => cancelaConvite(db, codigo))
+    return reply.status(204).send()
   })
 
   /**

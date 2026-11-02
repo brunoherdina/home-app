@@ -164,14 +164,19 @@ estrutura() { # asserções que valem depois de todo up
   # ── 0005: convites. Duas policies para casa_app (ler os da casa, criar para a
   # própria casa) e duas para casa_owner — estas últimas existem só porque o
   # FORCE RLS sujeita o definer de entra_na_casa() às policies da tabela.
-  afirma "quatro policies em convites" "4" \
+  # 0008 acrescenta a quinta: cancelar (DELETE) o próprio convite não usado.
+  afirma "cinco policies em convites" "5" \
     "$(como_owner -c "select count(*) from pg_policies where tablename='convites'")"
-  afirma "casa_app lê e cria convites" "t" \
-    "$(como_owner -c "select has_table_privilege('casa_app','convites','SELECT') and has_table_privilege('casa_app','convites','INSERT')")"
+  afirma "casa_app lê, cria e cancela convites" "t" \
+    "$(como_owner -c "select has_table_privilege('casa_app','convites','SELECT') and has_table_privilege('casa_app','convites','INSERT') and has_table_privilege('casa_app','convites','DELETE')")"
   # A ausência é o ponto: sem UPDATE, marcar (ou desmarcar) um convite como
   # usado só acontece dentro de entra_na_casa().
-  afirma "casa_app não consome nem apaga convite direto" "f" \
-    "$(como_owner -c "select has_table_privilege('casa_app','convites','UPDATE') or has_table_privilege('casa_app','convites','DELETE')")"
+  afirma "casa_app não consome convite direto" "f" \
+    "$(como_owner -c "select has_table_privilege('casa_app','convites','UPDATE')")"
+  # O DELETE de 0008 só alcança convite vivo de quem o emitiu — as três
+  # cláusulas estão na policy, não no handler.
+  afirma "cancelar exige ser quem emitiu e convite não usado" "t" \
+    "$(como_owner -c "select qual ilike '%criado_por%nullif%' and qual ilike '%usado_em IS NULL%' from pg_policies where policyname='morador_cancela_o_proprio_convite'")"
   afirma "casa_auth não alcança convites" "f" \
     "$(como_owner -c "select has_table_privilege('casa_auth','convites','SELECT')")"
 

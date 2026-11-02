@@ -13,13 +13,22 @@ import { requisita } from './cliente'
  * Cada chamada emite um convite — não há "reaproveita o último". Dois códigos
  * vivos ao mesmo tempo é um custo pequeno (cada um vale por uma pessoa só e
  * expira sozinho), e a alternativa seria uma tela de gerenciar convites, que é
- * exatamente o labirinto que o convite curto existe para não ser.
+ * exatamente o labirinto que o convite curto existe para não ser. Cancelar
+ * (`cancelaConvite`) vale para o código que está na tela, não para uma lista.
  */
 export function geraConvite(): Promise<Convite> {
   return requisita('/api/convites', {
     method: 'POST',
     valida: (dado) => conviteSchema.parse(dado),
   })
+}
+
+/**
+ * Cancela um código que a própria pessoa gerou e ninguém usou ainda (story
+ * 13a). 204 sem corpo, como o DELETE de tarefa.
+ */
+export async function cancelaConvite(codigo: string): Promise<void> {
+  await requisita(`/api/convites/${codigo}`, { method: 'DELETE', valida: () => undefined })
 }
 
 /**

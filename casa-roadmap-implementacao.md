@@ -43,6 +43,7 @@ Quando um item fechar, marque aqui.
 **Trilha do Bruno**
 
 1. Mergear os PRs #9 (home-app) e #16 (prumoz-site). Os dois fazem o deploy tentar o SSH de novo.
+   *(#9 mergeado em 2026-11-02, junto do #10 e do #11.)*
 2. Criar o e-mail `@prumoz.com.br`, se ainda não existir, e pedir o D-U-N-S. São as fases 1–2 do
    [guia do build iOS](apps/mobile/guia-build-ios.md).
 3. Inscrever a Prumoz no Apple Developer (fase 3). A inscrição entrega o Team ID.
@@ -54,9 +55,28 @@ pede build nativo, que pode sair junto com o primeiro build iOS.
 | # | Tarefa | Pronto quando | Depende de |
 |---|---|---|---|
 | B1 | Config de distribuição (ADR-0017): `com.prumoz.casa`, OTA ligado, perfil `testflight`, `ITSAppUsesNonExemptEncryption`, seção OTA do README | um APK novo instalado recebe um `eas update --channel preview` | — |
-| B2 | Portão de CI: `npm run verify` com o Postgres do compose, em todo PR e antes do deploy | PR com verify vermelho fica marcado; merge só deploya com verify verde | — |
-| B3 | Story 13a: cancelar convite e mostrar a validade | critério da 13a, no Épico 2 | B2 |
-| B4 | Story 13b: link + QR + abrir direto no app | critério da 13b, no Épico 2 | Team ID + B1 |
+| B2 ✅ | Portão de CI: `npm run verify` com o Postgres do compose, em todo PR e antes do deploy | PR com verify vermelho fica marcado; merge só deploya com verify verde | — |
+| B3 ✅ | Story 13a: cancelar convite e mostrar a validade | critério da 13a, no Épico 2 | B2 |
+| B4 | Story 13b: link + QR + abrir direto no app | critério da 13b, no Épico 2 | Team ID + B1 (só a metade iOS, ver abaixo) |
+
+**B2 (2026-11-02):**
+- `verify.yml` roda em todo push fora da `main`; o deploy chama o mesmo job e depende dele.
+- Prova de lado vermelho: branch descartável com teste quebrado reprovou no `verify`.
+- O CI roda também o `check:migration`.
+
+**B3 (2026-11-02):**
+- migration 0008: `DELETE` só do próprio convite não usado;
+- `DELETE /api/convites/:codigo`;
+- `expiraEm` na resposta de `POST /api/convites`;
+- data e botão de cancelar na tela.
+
+**B4 dividido (2026-11-02).** Só o universal link do iOS espera o Team ID. Podem sair antes, no
+Android:
+- o QR;
+- a página de fallback em `/convite/<código>`;
+- o App Link, cujo `assetlinks.json` usa o fingerprint da assinatura do EAS, não o Team ID.
+
+O iOS entra depois como acréscimo: `apple-app-site-association` + `associatedDomains`.
 | B5 | Épico 3, nesta ordem:<br>1. rodada de produto: o que são energia da casa, ofensiva, meta semanal e recompensa<br>2. quebra em stories<br>3. realtime: WebSocket + LISTEN/NOTIFY, com heartbeat abaixo dos 60 s de ociosidade do nginx<br>4. telas | DoD do Épico 3 | B2 |
 | B6 | E-mail pelo Resend: verificação + recuperar senha (ADR-0018) | antes do beta | B5 |
 | B7 | Épico 3b: lista de compras (ADR-0015) | DoD do 3b | B5 |
@@ -256,7 +276,7 @@ alternativa maior de propósito:
 | 10 | UI | navegação em abas + aba Tarefas (Todas / Minhas / Livres) com concluir | Livres = só modo Aberta; Minhas = só as da pessoa; concluir reflete na lista sem recarregar a tela |
 | 11 | UI | FAB de adicionar + tela de tarefa (título, peso, modo, responsável, marcar detestada) | criar / editar / apagar num device físico; marcar detestada fora do Rodízio não oferece bônus |
 | 12 | UI | Fase 1 do onboarding: convidar → concluir 1 tarefa | dois moradores na casa, uma conclusão, pontos somam em "sua parte" e no total — e em nenhum lugar mais |
-| 13a | API + UI | cancelar convite + validade visível (dividida em 2026-10-28) | cancelar invalida o código na hora: migration nova com o privilégio e a policy só para isso, já que hoje `convites` só tem SELECT e INSERT; a tela mostra até quando o código vale (7 dias); código cancelado dá o mesmo erro de inexistente ou expirado |
+| 13a ✅ | API + UI | cancelar convite + validade visível (dividida em 2026-10-28) | cancelar invalida o código na hora: migration nova com o privilégio e a policy só para isso, já que hoje `convites` só tem SELECT e INSERT; a tela mostra até quando o código vale (7 dias); código cancelado dá o mesmo erro de inexistente ou expirado |
 | 13b | 🚧 Apple | convite por **link** `https://casa.prumoz.com.br/convite/<código>` + **QR** | **espera o Team ID e o `com.prumoz.casa`** (ADR-0017):<br>• o link abre o app direto no ramo *tem convite* (universal link / App Link);<br>• os arquivos de `/.well-known/` são servidos pelo `vps-edge`, que hoje devolve 404 fora de `/api/`;<br>• sem o app instalado, o link cai numa página com o código;<br>• o QR é o mesmo link;<br>• pede build nativo |
 
 > [!note] Ordem de execução

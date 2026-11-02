@@ -57,6 +57,13 @@
       "when": 1788746367547,
       "tag": "0007_conclusoes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793661175458,
+      "tag": "0008_cancelar_convite",
+      "breakpoints": true
     }
   ]
 }

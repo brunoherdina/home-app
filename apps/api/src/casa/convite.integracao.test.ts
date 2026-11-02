@@ -7,7 +7,7 @@ import * as schema from '../db/schema.js'
 import { convites } from '../db/schema.js'
 import type { CasaDb } from '../plugins/withUser.js'
 import { ErroHttp } from '../erros.js'
-import { criaConvite, entraComConvite, geraCodigo } from './convite.js'
+import { cancelaConvite, criaConvite, entraComConvite, geraCodigo } from './convite.js'
 import { criaCasa, leCasaDaIdentidade } from './servico.js'
 
 /**
@@ -304,6 +304,82 @@ describe('convite', () => {
     expect((erro as { code?: string; cause?: { code?: string } }).cause?.code ?? '').toBe('42501')
   })
 
+  it('o convite traz a validade que o banco gravou — 7 dias a partir de agora', async () => {
+    const { dono } = await casaComDono()
+    const antes = Date.now()
+    const convite = await comoApp(dono, (db) => criaConvite(db))
+
+    const { rows } = await admin.query<{ expira_em: Date }>(
+      'select expira_em from convites where codigo = $1',
+      [convite.codigo],
+    )
+    expect(new Date(convite.expiraEm).getTime()).toBe(rows[0]!.expira_em.getTime())
+
+    const dias = (new Date(convite.expiraEm).getTime() - antes) / (24 * 60 * 60 * 1000)
+    expect(dias).toBeGreaterThan(6.99)
+    expect(dias).toBeLessThan(7.01)
+  })
+})
+
+/** Story 13a — cancelar, migration 0008. Quem nega é a policy de DELETE. */
+describe('cancelar convite', () => {
+  it('quem emitiu cancela, e o código cancelado dá a mesma recusa de inexistente', async () => {
+    const { dono } = await casaComDono()
+    const convidado = await novaConta('Cancelado')
+    const { codigo } = await comoApp(dono, (db) => criaConvite(db))
+
+    await comoApp(dono, (db) => cancelaConvite(db, codigo))
+
+    const erro = await comoApp(convidado, (db) => entraComConvite(db, codigo)).catch(
+      (e: unknown) => e,
+    )
+    const inexistente = await comoApp(convidado, (db) => entraComConvite(db, 'ZZZZZZ')).catch(
+      (e: unknown) => e,
+    )
+    expect((erro as ErroHttp).codigo).toBe('CONVITE_INVALIDO')
+    expect((erro as ErroHttp).message).toBe((inexistente as ErroHttp).message)
+    expect(await comoApp(convidado, (db) => leCasaDaIdentidade(db))).toBeNull()
+  })
+
+  it('só quem emitiu cancela — nem quem mora junto, nem quem é de outra casa', async () => {
+    const { dono } = await casaComDono()
+    const intruso = await casaComDono()
+    const vizinho = await novaConta('Mora junto')
+    const { codigo: deEntrada } = await comoApp(dono, (db) => criaConvite(db))
+    await comoApp(vizinho, (db) => entraComConvite(db, deEntrada))
+
+    const { codigo } = await comoApp(dono, (db) => criaConvite(db))
+
+    for (const outro of [vizinho, intruso.dono]) {
+      await expect(comoApp(outro, (db) => cancelaConvite(db, codigo))).rejects.toMatchObject({
+        status: 404,
+        codigo: 'CONVITE_NAO_CANCELAVEL',
+      })
+    }
+
+    // O convite sobreviveu às duas tentativas — a negação foi da policy, e não
+    // um 404 por o código já ter sumido.
+    const { rows } = await admin.query('select 1 from convites where codigo = $1', [codigo])
+    expect(rows).toHaveLength(1)
+  })
+
+  it('convite já usado não se cancela — é o registro de quem entrou', async () => {
+    const { dono, casa } = await casaComDono()
+    const convidado = await novaConta('Já entrou')
+    const { codigo } = await comoApp(dono, (db) => criaConvite(db))
+    await comoApp(convidado, (db) => entraComConvite(db, codigo))
+
+    await expect(comoApp(dono, (db) => cancelaConvite(db, codigo))).rejects.toMatchObject({
+      status: 404,
+      codigo: 'CONVITE_NAO_CANCELAVEL',
+    })
+
+    const doConvidado = await comoApp(convidado, (db) => leCasaDaIdentidade(db))
+    expect(doConvidado?.id).toBe(casa.id)
+  })
+})
+
+describe('convite e a porta da casa', () => {
   it('entrar em casa continua sendo função — o UPDATE direto é negado', async () => {
     const alvo = await casaComDono()
     const forasteiro = await novaConta('Forasteiro')

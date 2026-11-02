@@ -74,8 +74,13 @@ Entrar numa casa continua sem ser um `UPDATE`: é a função `entra_na_casa()`
 não tem `UPDATE (casa_id)` em `moradores`, então descobrir o uuid de uma casa
 não basta para entrar nela.
 
-Fora do escopo, de propósito: QR code e deep link (precisam de URL pública —
-Épico 0b), cancelar convite e login com Google (sem client id).
+O código gerado mostra até quando vale ("vale até 9 de novembro"), com a data
+que o servidor gravou, e pode ser cancelado ali mesmo (story 13a): `DELETE
+/api/convites/:codigo`, que a policy de 0008 só deixa passar para quem emitiu e
+enquanto ninguém usou. Código cancelado dá a mesma recusa de código inexistente.
+
+Fora do escopo, de propósito: QR code e link (story 13b, ADR-0017) e login com
+Google (sem client id).
 
 ## Tarefas (Épico 2)
 
