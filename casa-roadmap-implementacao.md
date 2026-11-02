@@ -284,7 +284,8 @@ alternativa maior de propósito:
 > paralelo com 4–7 e **deve** ficar pronta antes da 10 — a guarda precisa existir antes de a tela
 > ter onde exibir um pódio acidental. A 13 fica parada até o 0b fechar.
 
-- **Status (2026-10-26):** stories 1–12 entregues; a 13 segue bloqueada pelo 0b. Decisões tomadas
+- **Status (2026-11-02):** stories 1–12 e 13a entregues; a 13b espera o Team ID só na metade iOS
+  (ver B4 na fila). Decisões tomadas
   na implementação, que a tabela acima não fixava:
   - **qualquer morador conclui qualquer tarefa**, e os pontos — bônus incluído — vão para quem fez;
     cobrir o par é comportamento desejado, não exceção;
